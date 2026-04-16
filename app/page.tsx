@@ -144,6 +144,29 @@ function PauseGlyph() {
   )
 }
 
+function RevealGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden="true">
+      <path
+        d="M1.5 12s3.75-6 10.5-6 10.5 6 10.5 6-3.75 6-10.5 6S1.5 12 1.5 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+      />
+    </svg>
+  )
+}
+
 function DlsButton({
   variant,
   children,
@@ -534,25 +557,41 @@ function GameSupportRow({
   onReveal: () => void
 }) {
   const actions = [
-    { label: "Hint", icon: icons.hint, onClick: onHint },
-    { label: "Reveal", icon: icons.preview, onClick: onReveal },
+    {
+      label: "Hint",
+      icon: icons.hint,
+      onClick: onHint,
+      className: "bg-black text-white",
+    },
+    {
+      label: "Reveal Word",
+      icon: "",
+      onClick: onReveal,
+      className: "border-[4px] border-black bg-transparent text-black",
+      useRevealGlyph: true,
+    },
   ]
 
   return (
-    <div className="flex items-start justify-center gap-4">
+    <div className="flex w-full items-center justify-center gap-4">
       {actions.map((action) => (
         <button
           key={action.label}
           type="button"
           onClick={action.onClick}
-          className="support-action-enter flex flex-col items-center gap-2"
+          className={cn(
+            "support-action-enter inline-flex h-11 flex-1 items-center justify-center gap-[10px] rounded-[12px] px-4 transition-transform active:translate-y-0.5",
+            action.className
+          )}
         >
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black p-3 transition-transform active:scale-95">
-            <span className="h-7 w-7">
-              <Icon src={action.icon} alt={action.label} />
-            </span>
+          <span className="h-4 w-4 shrink-0">
+            {action.useRevealGlyph ? (
+              <RevealGlyph />
+            ) : (
+              <Icon src={action.icon} alt="" />
+            )}
           </span>
-          <span className={TYPO.headline5 + " text-black/80"}>
+          <span className="text-[16px] leading-[24px] font-semibold">
             {action.label}
           </span>
         </button>
@@ -756,7 +795,7 @@ function GameScreen({
       <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col px-4 pt-[104px] pb-[14rem] sm:px-6">
         <div
           key={questionIndex}
-          className="question-group-enter flex flex-1 flex-col items-center gap-4 pt-3"
+          className="question-group-enter flex flex-1 flex-col items-center justify-center gap-8 pb-8"
         >
           <QuestionBox
             questionIndex={questionIndex}
@@ -764,20 +803,18 @@ function GameScreen({
             question={question}
           />
 
-          <div className="flex flex-1 items-center justify-center self-stretch">
-            <WordTiles
-              currentWord={currentWord}
-              questionIndex={questionIndex}
-              completedFlash={completedFlash}
-              selectedIndex={selectedIndex}
-              hintIndex={hintIndex}
-              hintFlashIndex={hintFlashIndex}
-              wrongIndex={wrongIndex}
-              correctIndex={correctIndex}
-              shakeIndex={shakeIndex}
-              onSelectTile={onSelectTile}
-            />
-          </div>
+          <WordTiles
+            currentWord={currentWord}
+            questionIndex={questionIndex}
+            completedFlash={completedFlash}
+            selectedIndex={selectedIndex}
+            hintIndex={hintIndex}
+            hintFlashIndex={hintFlashIndex}
+            wrongIndex={wrongIndex}
+            correctIndex={correctIndex}
+            shakeIndex={shakeIndex}
+            onSelectTile={onSelectTile}
+          />
         </div>
 
         <div className="fixed inset-x-0 bottom-[calc(11.5rem+env(safe-area-inset-bottom))] z-20 px-4 sm:px-6">

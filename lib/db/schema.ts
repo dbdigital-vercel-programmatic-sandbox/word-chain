@@ -1,6 +1,8 @@
 import {
   boolean,
+  date,
   index,
+  jsonb,
   pgTable,
   serial,
   text,
@@ -44,9 +46,23 @@ export const surveyResponses = pgTable("survey_responses", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
+export const puzzleSchedules = pgTable("puzzle_schedules", {
+  id: text("id").primaryKey(),
+  scheduleDate: date("schedule_date", { mode: "string" }).notNull().unique(),
+  startWord: text("start_word").notNull(),
+  puzzles: jsonb("puzzles")
+    .$type<Array<{ question: string; answer: string }>>()
+    .notNull(),
+  published: boolean("published").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
 export type Post = typeof posts.$inferSelect
 export type NewPost = typeof posts.$inferInsert
 export type Todo = typeof todos.$inferSelect
 export type NewTodo = typeof todos.$inferInsert
 export type SurveyResponse = typeof surveyResponses.$inferSelect
 export type NewSurveyResponse = typeof surveyResponses.$inferInsert
+export type PuzzleScheduleRecord = typeof puzzleSchedules.$inferSelect
+export type NewPuzzleScheduleRecord = typeof puzzleSchedules.$inferInsert

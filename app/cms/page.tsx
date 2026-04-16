@@ -1,303 +1,385 @@
 "use client"
 
-import { useCallback, useEffect, useState, type FormEvent } from "react"
-import {
-  DownloadIcon,
-  LoaderIcon,
-  RefreshCwIcon,
-  Trash2Icon,
-} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { normalizePhoneNumber } from "@/lib/survey"
+  createEmptySchedule,
+  findScheduleByDate,
+  getScheduleStatus,
+  getTodayDateString,
+  loadPuzzleSchedules,
+  savePuzzleSchedule,
+  type Puzzle,
+  type PuzzleSchedule,
+  upsertSchedule,
+  validateSchedule,
+} from "@/lib/chainword-cms"
 
-type CmsSurveyResponse = {
-  id: number
-  userId: string
-  userName: string | null
-  phoneNumber: string
-  cmFace: string
-  cmCaste: string
-  cmQuality: string
-  nitishShouldStepDown: string
-  nitishTenurePreference: string
-  createdAt: string
+function countChangedLetters(previous: string, next: string) {
+  const maxLength = Math.max(previous.length, next.length)
+  let changes = 0
+
+  for (let i = 0; i < maxLength; i += 1) {
+    if (previous[i] !== next[i]) {
+      changes += 1
+    }
+  }
+
+  return changes
 }
 
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init)
-  const text = await response.text()
-
-  let data: unknown = null
-
-  try {
-    data = text ? (JSON.parse(text) as unknown) : null
-  } catch {
-    throw new Error(text.slice(0, 200) || "Request failed")
+function toEditable(schedule: PuzzleSchedule): PuzzleSchedule {
+  return {
+    ...schedule,
+    puzzles:
+      schedule.puzzles.length > 0
+        ? schedule.puzzles.map((puzzle) => ({ ...puzzle }))
+        : [{ question: "", answer: "" }],
   }
-
-  if (!response.ok) {
-    throw new Error(
-      (data as { error?: string } | null)?.error ?? "Request failed"
-    )
-  }
-
-  return data as T
 }
 
 export default function CmsPage() {
-  const [items, setItems] = useState<CmsSurveyResponse[]>([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [clearing, setClearing] = useState(false)
-  const [phoneNumber, setPhoneNumber] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [hydrated, setHydrated] = useState(false)
+  const [schedules, setSchedules] = useState<PuzzleSchedule[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<PuzzleSchedule>(createEmptySchedule())
+  const [errors, setErrors] = useState<string[]>([])
+  const [flash, setFlash] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
-  const loadResponses = useCallback(async (showLoader = false) => {
-    if (showLoader) {
-      setRefreshing(true)
+  const today = useMemo(() => getTodayDateString(), [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function hydrateSchedules() {
+      const stored = await loadPuzzleSchedules()
+      if (!isMounted) return
+
+      setSchedules(stored)
+      if (stored[0]) {
+        setActiveId(stored[0].id)
+        setDraft(toEditable(stored[0]))
+      }
+      setHydrated(true)
     }
 
-    try {
-      setError(null)
-      const data = await fetchJson<{ items: CmsSurveyResponse[] }>(
-        "/api/cms/survey",
-        {
-          cache: "no-store",
-        }
-      )
-      setItems(data.items)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Responses not available")
-    } finally {
-      setLoading(false)
-      if (showLoader) {
-        setRefreshing(false)
-      }
+    void hydrateSchedules()
+
+    return () => {
+      isMounted = false
     }
   }, [])
 
-  useEffect(() => {
-    void loadResponses()
-  }, [loadResponses])
+  function selectSchedule(schedule: PuzzleSchedule) {
+    setActiveId(schedule.id)
+    setDraft(toEditable(schedule))
+    setErrors([])
+  }
 
-  async function handleClear(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function createNew() {
+    const empty = createEmptySchedule()
+    setActiveId(empty.id)
+    setDraft(empty)
+    setErrors([])
+  }
 
-    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber)
+  const sameDateSchedule = useMemo(
+    () => findScheduleByDate(schedules, draft.date, draft.id),
+    [draft.date, draft.id, schedules]
+  )
 
-    if (!normalizedPhoneNumber) {
-      setError("Enter a valid phone number to clear survey data.")
+  function updateDraftDate(nextDate: string) {
+    setDraft((prev) => ({ ...prev, date: nextDate }))
+    setErrors([])
+  }
+
+  function loadSameDateSchedule() {
+    if (!sameDateSchedule) return
+    selectSchedule(sameDateSchedule)
+    setFlash(`Loaded ${sameDateSchedule.date} schedule`)
+    window.setTimeout(() => setFlash(null), 1200)
+  }
+
+  function updateStep(index: number, next: Partial<Puzzle>) {
+    setDraft((prev) => ({
+      ...prev,
+      puzzles: prev.puzzles.map((step, stepIndex) =>
+        stepIndex === index ? { ...step, ...next } : step
+      ),
+    }))
+  }
+
+  function addStep() {
+    setDraft((prev) => ({
+      ...prev,
+      puzzles: [...prev.puzzles, { question: "", answer: "" }],
+    }))
+  }
+
+  function removeStep(index: number) {
+    setDraft((prev) => ({
+      ...prev,
+      puzzles: prev.puzzles.filter((_, stepIndex) => stepIndex !== index),
+    }))
+  }
+
+  async function saveSchedule(published: boolean) {
+    const nextDraft = { ...draft, published }
+    const nextErrors = validateSchedule(nextDraft)
+    if (nextErrors.length > 0) {
+      setErrors(nextErrors)
       return
     }
 
-    setClearing(true)
-    setError(null)
-    setNotice(null)
-
     try {
-      const data = await fetchJson<{ deletedCount: number }>(
-        "/api/cms/survey",
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ phoneNumber: normalizedPhoneNumber }),
-        }
-      )
+      setIsSaving(true)
+      await savePuzzleSchedule(nextDraft)
+      const refreshed = await loadPuzzleSchedules()
+      const persistedSchedule =
+        refreshed.find((schedule) => schedule.id === nextDraft.id) ??
+        refreshed.find((schedule) => schedule.date === nextDraft.date) ??
+        upsertSchedule([], nextDraft)[0]
 
-      setNotice(
-        data.deletedCount > 0
-          ? `Removed ${data.deletedCount} survey response for ${normalizedPhoneNumber}.`
-          : `No survey response found for ${normalizedPhoneNumber}.`
-      )
-      setPhoneNumber("")
-      await loadResponses()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to clear response")
+      setSchedules(refreshed)
+      setActiveId(persistedSchedule.id)
+      setDraft(toEditable(persistedSchedule))
+      setErrors([])
+      setFlash(published ? "Published" : "Saved as draft")
+      window.setTimeout(() => setFlash(null), 1200)
+    } catch {
+      setFlash("Failed to save. Check your DB connection.")
+      window.setTimeout(() => setFlash(null), 1800)
     } finally {
-      setClearing(false)
+      setIsSaving(false)
     }
   }
 
-  const latestSubmission = items[0]?.createdAt
+  if (!hydrated) {
+    return <main className="min-h-dvh" />
+  }
 
   return (
-    <div className="mx-auto w-full max-w-7xl p-6">
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold">Survey Responses</h1>
-            <Badge variant="secondary">{items.length}</Badge>
+    <main className="min-h-dvh bg-[#f6f4ee] text-[#1f1d17]">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.2em] text-[#7b745f] uppercase">
+              Puzzle CMS
+            </p>
+            <h1 className="text-3xl font-bold">ChainWord Scheduler</h1>
+            <p className="mt-1 text-sm text-[#5f5949]">
+              Create daily puzzle chains, save drafts, and publish by date.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Download all submissions as CSV or clear a single response by phone
-            number.
-          </p>
-        </div>
+        </header>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void loadResponses(true)}
-            disabled={loading || refreshing || clearing}
-          >
-            <RefreshCwIcon className={refreshing ? "animate-spin" : ""} />
-            Refresh
-          </Button>
-          <Button asChild>
-            <a href="/api/cms/survey/export">
-              <DownloadIcon />
-              Download CSV
-            </a>
-          </Button>
-        </div>
-      </div>
+        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+          <aside className="rounded-2xl border border-[#d8d2c3] bg-white p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Schedules</h2>
+              <button
+                type="button"
+                onClick={createNew}
+                className="rounded-lg bg-[#1f1d17] px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                New
+              </button>
+            </div>
+            <div className="space-y-2">
+              {schedules.map((schedule) => {
+                const status = getScheduleStatus(schedule, today)
+                return (
+                  <button
+                    key={schedule.id}
+                    type="button"
+                    onClick={() => selectSchedule(schedule)}
+                    className={`w-full rounded-xl border p-3 text-left ${
+                      schedule.id === activeId
+                        ? "border-[#1f1d17] bg-[#f6f4ee]"
+                        : "border-[#e8e2d3] bg-white"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">{schedule.date}</p>
+                    <p className="text-xs text-[#6a6454]">
+                      {status} · {schedule.puzzles.length} steps
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          </aside>
 
-      {error ? (
-        <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      ) : null}
+          <section className="rounded-2xl border border-[#d8d2c3] bg-white p-4 sm:p-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-xs font-semibold tracking-wide text-[#716a58] uppercase">
+                  Puzzle Date
+                </span>
+                <input
+                  type="date"
+                  value={draft.date}
+                  onChange={(event) => updateDraftDate(event.target.value)}
+                  className="w-full rounded-lg border border-[#d9d2c2] px-3 py-2"
+                />
+                {sameDateSchedule ? (
+                  <button
+                    type="button"
+                    onClick={loadSameDateSchedule}
+                    className="mt-1 text-xs font-semibold text-[#2f5e8e]"
+                  >
+                    Load existing {getScheduleStatus(sameDateSchedule, today)}
+                    schedule for this date
+                  </button>
+                ) : null}
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-semibold tracking-wide text-[#716a58] uppercase">
+                  Start Word
+                </span>
+                <input
+                  value={draft.startWord}
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      startWord: event.target.value.toUpperCase(),
+                    }))
+                  }
+                  placeholder="TOLD"
+                  className="w-full rounded-lg border border-[#d9d2c2] px-3 py-2 uppercase"
+                />
+              </label>
+            </div>
 
-      {notice ? (
-        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
-          {notice}
-        </div>
-      ) : null}
+            <div className="mt-5 space-y-3">
+              {draft.puzzles.map((step, index) => (
+                <div
+                  key={`${draft.id}-step-${index}`}
+                  className="rounded-xl border border-[#e8e2d3] p-3"
+                >
+                  {(() => {
+                    const startWord = draft.startWord.trim().toUpperCase()
+                    const answer = step.answer.trim().toUpperCase()
+                    const previousWord =
+                      index === 0
+                        ? startWord
+                        : (draft.puzzles[index - 1]?.answer ?? "")
+                            .trim()
+                            .toUpperCase()
 
-      <div className="mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total submissions</CardTitle>
-            <CardDescription>
-              Current survey entries in the database
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {items.length}
-            </p>
-          </CardContent>
-        </Card>
+                    const warnings: string[] = []
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Latest submission</CardTitle>
-            <CardDescription>Most recent response timestamp</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-foreground">
-              {latestSubmission
-                ? new Date(latestSubmission).toLocaleString()
-                : "No submissions yet"}
-            </p>
-          </CardContent>
-        </Card>
+                    if (startWord && answer.length > startWord.length) {
+                      warnings.push(
+                        `Answer has ${answer.length} letters, which exceeds the start word limit of ${startWord.length}.`
+                      )
+                    }
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Clear by phone</CardTitle>
-            <CardDescription>
-              Delete a single user response using the app phone number
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form
-              className="flex flex-col gap-3 sm:flex-row"
-              onSubmit={handleClear}
+                    if (previousWord && answer) {
+                      const changedLetters = countChangedLetters(
+                        previousWord,
+                        answer
+                      )
+                      if (changedLetters > 2) {
+                        warnings.push(
+                          `More than 2 letters changed from the previous word (${changedLetters} changed).`
+                        )
+                      }
+                    }
+
+                    if (warnings.length === 0) {
+                      return null
+                    }
+
+                    return (
+                      <div className="mb-2 rounded-lg border border-[#f4c66f] bg-[#fff8e8] px-3 py-2 text-xs text-[#8a5a07]">
+                        {warnings.map((warning) => (
+                          <p key={warning}>{warning}</p>
+                        ))}
+                      </div>
+                    )
+                  })()}
+
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-semibold tracking-[0.15em] text-[#7e7664] uppercase">
+                      Step {index + 1}
+                    </p>
+                    {draft.puzzles.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => removeStep(index)}
+                        className="text-xs font-semibold text-[#8e2f2f]"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_140px]">
+                    <input
+                      value={step.question}
+                      onChange={(event) =>
+                        updateStep(index, { question: event.target.value })
+                      }
+                      placeholder="Question or clue"
+                      className="w-full rounded-lg border border-[#d9d2c2] px-3 py-2"
+                    />
+                    <input
+                      value={step.answer}
+                      onChange={(event) =>
+                        updateStep(index, {
+                          answer: event.target.value.toUpperCase(),
+                        })
+                      }
+                      placeholder="ANSWER"
+                      className="w-full rounded-lg border border-[#d9d2c2] px-3 py-2 uppercase"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={addStep}
+              className="mt-3 rounded-lg border border-dashed border-[#b9b09a] px-3 py-2 text-sm font-semibold"
             >
-              <Input
-                value={phoneNumber}
-                onChange={(event) => setPhoneNumber(event.target.value)}
-                placeholder="+919876543210"
-                className="h-10"
-                disabled={clearing}
-              />
-              <Button type="submit" variant="destructive" disabled={clearing}>
-                {clearing ? (
-                  <LoaderIcon className="animate-spin" />
-                ) : (
-                  <Trash2Icon />
-                )}
-                Clear data
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+              Add step
+            </button>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-          <LoaderIcon className="mr-2 size-4 animate-spin" />
-          Loading survey responses...
-        </div>
-      ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No survey responses yet.
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-40">Submitted</TableHead>
-                  <TableHead className="min-w-36">Phone</TableHead>
-                  <TableHead className="min-w-36">User ID</TableHead>
-                  <TableHead className="min-w-36">User name</TableHead>
-                  <TableHead className="min-w-40">CM face</TableHead>
-                  <TableHead className="min-w-28">Caste</TableHead>
-                  <TableHead className="min-w-64">Quality</TableHead>
-                  <TableHead className="min-w-28">Step down</TableHead>
-                  <TableHead className="min-w-64">Tenure preference</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(item.createdAt).toLocaleString()}
-                    </TableCell>
-                    <TableCell>{item.phoneNumber}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {item.userId}
-                    </TableCell>
-                    <TableCell>{item.userName ?? "-"}</TableCell>
-                    <TableCell>{item.cmFace}</TableCell>
-                    <TableCell>{item.cmCaste}</TableCell>
-                    <TableCell>{item.cmQuality}</TableCell>
-                    <TableCell>{item.nitishShouldStepDown}</TableCell>
-                    <TableCell>{item.nitishTenurePreference}</TableCell>
-                  </TableRow>
+            {errors.length > 0 ? (
+              <div className="mt-4 rounded-lg border border-[#f0b4b4] bg-[#fff4f4] p-3 text-sm text-[#8a2d2d]">
+                {errors.map((error) => (
+                  <p key={error}>{error}</p>
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void saveSchedule(false)}
+                disabled={isSaving}
+                className="rounded-lg border border-[#1f1d17] px-4 py-2 text-sm font-semibold"
+              >
+                Save Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveSchedule(true)}
+                disabled={isSaving}
+                className="rounded-lg bg-[#1f1d17] px-4 py-2 text-sm font-semibold text-white"
+              >
+                Publish
+              </button>
+              {flash ? (
+                <p className="self-center text-sm font-semibold text-[#2e6a44]">
+                  {flash}
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
   )
 }

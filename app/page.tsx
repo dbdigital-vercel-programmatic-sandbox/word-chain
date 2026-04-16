@@ -756,7 +756,7 @@ function GameScreen({
       <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col px-4 pt-[104px] pb-[14rem] sm:px-6">
         <div
           key={questionIndex}
-          className="question-group-enter flex flex-1 flex-col items-center justify-start gap-4 pt-3"
+          className="question-group-enter flex flex-1 flex-col items-center gap-4 pt-3"
         >
           <QuestionBox
             questionIndex={questionIndex}
@@ -764,18 +764,20 @@ function GameScreen({
             question={question}
           />
 
-          <WordTiles
-            currentWord={currentWord}
-            questionIndex={questionIndex}
-            completedFlash={completedFlash}
-            selectedIndex={selectedIndex}
-            hintIndex={hintIndex}
-            hintFlashIndex={hintFlashIndex}
-            wrongIndex={wrongIndex}
-            correctIndex={correctIndex}
-            shakeIndex={shakeIndex}
-            onSelectTile={onSelectTile}
-          />
+          <div className="flex flex-1 items-center justify-center self-stretch">
+            <WordTiles
+              currentWord={currentWord}
+              questionIndex={questionIndex}
+              completedFlash={completedFlash}
+              selectedIndex={selectedIndex}
+              hintIndex={hintIndex}
+              hintFlashIndex={hintFlashIndex}
+              wrongIndex={wrongIndex}
+              correctIndex={correctIndex}
+              shakeIndex={shakeIndex}
+              onSelectTile={onSelectTile}
+            />
+          </div>
         </div>
 
         <div className="fixed inset-x-0 bottom-[calc(11.5rem+env(safe-area-inset-bottom))] z-20 px-4 sm:px-6">

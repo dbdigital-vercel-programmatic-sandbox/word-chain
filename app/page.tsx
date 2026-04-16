@@ -571,11 +571,11 @@ function QuestionBox({
   question: string
 }) {
   return (
-    <section className="question-enter mx-auto w-full max-w-[296px] rounded-[3px] bg-[#051413] px-[5px] py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]">
+    <section className="question-enter mx-auto w-full max-w-[360px] rounded-[3px] bg-[#051413] px-[5px] py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]">
       <p className="text-[11px] font-semibold tracking-[0.2em] text-[#A1E7CB] uppercase">
         Question {questionIndex + 1}/{totalQuestions}
       </p>
-      <h2 className="mt-1 text-[16px] leading-[1.2] font-semibold text-white">
+      <h2 className="mt-1 text-[24px] leading-[36px] font-semibold text-white">
         {question}
       </h2>
     </section>

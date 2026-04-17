@@ -195,6 +195,29 @@
   }
 }
 
+@keyframes tutorial-hand {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    transform: translateY(8px) scale(0.97);
+  }
+  55% {
+    transform: translateY(2px) scale(1.02);
+  }
+}
+
+@keyframes tutorial-hand-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.22));
+  }
+  50% {
+    filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.28));
+  }
+}
+
 @keyframes game-toast {
   0% {
     opacity: 0;
@@ -311,16 +334,28 @@
 @keyframes support-action-highlight {
   0%,
   100% {
-    transform: scale(1);
+    transform: translateX(0);
   }
-  20% {
-    transform: scale(1.06);
+  12.5% {
+    transform: translateX(-4px);
+  }
+  25% {
+    transform: translateX(4px);
+  }
+  37.5% {
+    transform: translateX(-3px);
   }
   50% {
-    transform: scale(1);
+    transform: translateX(3px);
   }
-  70% {
-    transform: scale(1.06);
+  62.5% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+  87.5% {
+    transform: translateX(-1px);
   }
 }
 
@@ -358,6 +393,16 @@
 
 .glow-pulse {
   animation: glow-pulse 1.3s ease-in-out infinite;
+}
+
+.tutorial-hand {
+  animation: tutorial-hand 1.25s ease-in-out infinite;
+}
+
+.tutorial-hand-image {
+  animation: tutorial-hand-glow 1.25s ease-in-out infinite;
+  object-fit: contain;
+  transform-origin: 50% 20%;
 }
 
 .game-toast {
@@ -412,6 +457,7 @@
 .question-box-stage {
   position: relative;
   min-height: 86px;
+  transition: height 220ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .question-box-motion[data-phase="idle"],
@@ -421,7 +467,8 @@
 
 .question-box-motion-layer {
   position: absolute;
-  inset: 0;
+  inset-inline: 0;
+  top: 0;
 }
 
 .question-box-motion[data-phase="exit"] {
@@ -436,8 +483,16 @@
   animation: tile-enter 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.keyboard-enter {
-  animation: keyboard-enter 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+.keyboard-shell {
+  transform: translate3d(0, 100%, 0);
+  transition: transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.keyboard-shell[data-visible="true"] {
+  transform: translate3d(0, 0, 0);
+  pointer-events: auto;
 }
 
 .support-row-enter {
@@ -449,8 +504,7 @@
 }
 
 .support-action-highlight {
-  transform-origin: center;
-  animation: support-action-highlight 0.9s ease-in-out infinite;
+  animation: support-action-highlight 0.6s linear infinite;
 }
 
 .support-action-enter:nth-child(1) {

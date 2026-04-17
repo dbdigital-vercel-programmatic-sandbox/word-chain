@@ -11,6 +11,7 @@ import {
 import {
   compareDateStrings,
   createFallbackSchedule,
+  getProgressStorageKey,
   getActivePuzzleForDate,
   getResultStorageKey,
   getScheduleStatus,
@@ -28,6 +29,21 @@ type SavedResult = {
   seconds: number
   mistakes: number
   longestStreak: number
+  revealCount: number
+}
+
+type SavedProgress = {
+  date: string
+  questionIndex: number
+  letters: string[]
+  selectedIndex: number | null
+  mistakes: number
+  questionMistakes: number
+  streak: number
+  longestStreak: number
+  bonusPoints: number
+  revealCount: number
+  elapsed: number
 }
 
 type ButtonVariant =
@@ -52,6 +68,9 @@ const GAME_THEME_BACKGROUND = "#A1E7CB"
 const GAME_FONT_FAMILY = '"Noto Sans", sans-serif'
 const GAME_LOGO_URL =
   "https://images.bhaskarassets.com/web2images/521/2026/03/word-chain_1774968271.png"
+const FIRST_QUESTION_HAND_STORAGE_KEY = "chainword:first-question-hand-seen"
+const FIRST_QUESTION_HAND_IMAGE_URL =
+  "https://staging-images.bhaskarassets.com/web2images/521/2026/04/image-hand-swipe-gesture_1776413302.png"
 
 const LETTER_ROWS = [
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
@@ -107,6 +126,14 @@ function formatLongDate(value: string) {
   }).format(new Date(year, month - 1, day))
 }
 
+function addDaysToDateString(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number)
+  const nextDate = new Date(year, month - 1, day)
+  nextDate.setDate(nextDate.getDate() + days)
+
+  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(nextDate.getDate()).padStart(2, "0")}`
+}
+
 function formatClock(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
@@ -133,6 +160,21 @@ function computeScore(
 
 function Icon({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} className="h-full w-full object-contain" />
+}
+
+function TutorialHand() {
+  return (
+    <span
+      aria-hidden="true"
+      className="tutorial-hand pointer-events-none absolute inset-0 z-20 flex items-end justify-end"
+    >
+      <img
+        src={FIRST_QUESTION_HAND_IMAGE_URL}
+        alt=""
+        className="tutorial-hand-image h-[82px] w-[82px] max-w-none translate-x-[40%] translate-y-[42%] select-none sm:h-[90px] sm:w-[90px]"
+      />
+    </span>
+  )
 }
 
 function PauseGlyph() {
@@ -299,18 +341,26 @@ function PauseModal({ onResume }: { onResume: () => void }) {
   )
 }
 
-function ResultSummary({ result }: { result: SavedResult }) {
+function ResultSummary({
+  result,
+  totalQuestions,
+}: {
+  result: SavedResult
+  totalQuestions: number
+}) {
+  const score = Math.max(0, totalQuestions - result.revealCount)
+
   return (
     <section className="rounded-[24px] bg-white px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <p className={TYPO.headline3 + " text-black"}>Total score</p>
-        <p className={TYPO.display2 + " text-black"}>
-          {result.score.toLocaleString("en-US")}
-        </p>
+        <p
+          className={TYPO.display2 + " text-black"}
+        >{`${score}/${totalQuestions}`}</p>
       </div>
 
       <div className="mt-4 rounded-[18px] bg-[#FFF7D1] px-3 py-3">
-        <div className="grid grid-cols-3 gap-3 text-center">
+        <div className="grid grid-cols-2 gap-3 text-center">
           {[
             {
               label: "Time",
@@ -319,10 +369,6 @@ function ResultSummary({ result }: { result: SavedResult }) {
             {
               label: "Mistakes",
               value: String(result.mistakes),
-            },
-            {
-              label: "Best streak",
-              value: String(result.longestStreak),
             },
           ].map((item) => (
             <div key={item.label} className="px-1 py-1.5">
@@ -409,14 +455,16 @@ function SummaryHero({ title, subtitle }: { title: string; subtitle: string }) {
 function HomeScreen({
   dateLabel,
   completedResult,
+  hasSavedProgress,
   onLogoTap,
-  onStart,
+  onPrimaryAction,
   onResetGame,
 }: {
   dateLabel: string
   completedResult: SavedResult | null
+  hasSavedProgress: boolean
   onLogoTap: () => void
-  onStart: () => void
+  onPrimaryAction: () => void
   onResetGame: () => void
 }) {
   return (
@@ -450,8 +498,8 @@ function HomeScreen({
         {completedResult ? (
           <DlsButton variant="disabled-large">Puzzle Finished</DlsButton>
         ) : (
-          <DlsButton variant="primary-large" onClick={onStart}>
-            Start
+          <DlsButton variant="primary-large" onClick={onPrimaryAction}>
+            {hasSavedProgress ? "Continue" : "Start"}
           </DlsButton>
         )}
       </div>
@@ -463,7 +511,7 @@ function HomeScreen({
             onClick={onResetGame}
             className="text-sm font-semibold text-black/60 underline underline-offset-4 transition-colors hover:text-black"
           >
-            Debug: reset game
+            Debug: restart game
           </button>
         </div>
       ) : null}
@@ -586,26 +634,20 @@ function GameSupportRow({
           type="button"
           onClick={action.onClick}
           className={cn(
-            "support-action-enter inline-flex h-11 flex-1 rounded-[12px] transition-transform active:translate-y-0.5",
-            action.className
+            "inline-flex h-11 flex-1 items-center justify-center gap-[10px] rounded-[12px] px-4 transition-transform active:translate-y-0.5",
+            action.className,
+            action.isHighlighted && "support-action-highlight"
           )}
         >
-          <span
-            className={cn(
-              "inline-flex h-full w-full items-center justify-center gap-[10px] px-4",
-              action.isHighlighted && "support-action-highlight"
+          <span className="h-4 w-4 shrink-0">
+            {action.useRevealGlyph ? (
+              <RevealGlyph />
+            ) : (
+              <Icon src={action.icon} alt="" />
             )}
-          >
-            <span className="h-4 w-4 shrink-0">
-              {action.useRevealGlyph ? (
-                <RevealGlyph />
-              ) : (
-                <Icon src={action.icon} alt="" />
-              )}
-            </span>
-            <span className="text-[16px] leading-[24px] font-semibold">
-              {action.label}
-            </span>
+          </span>
+          <span className="text-[16px] leading-[24px] font-semibold">
+            {action.label}
           </span>
         </button>
       ))}
@@ -634,10 +676,41 @@ function QuestionBox({
     questionIndex: number
   }>(null)
   const [phase, setPhase] = useState<"idle" | "exit" | "prep" | "enter">("idle")
+  const [stageHeight, setStageHeight] = useState<number | null>(null)
+  const currentCardRef = useRef<HTMLElement | null>(null)
+  const incomingCardRef = useRef<HTMLElement | null>(null)
   const exitTimerRef = useRef<number | null>(null)
   const swapTimerRef = useRef<number | null>(null)
   const settleTimerRef = useRef<number | null>(null)
   const frameRef = useRef<number | null>(null)
+  const heightFrameRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const currentHeight = currentCardRef.current?.offsetHeight ?? 0
+    const incomingHeight = incomingCardRef.current?.offsetHeight ?? 0
+    const nextHeight =
+      phase === "idle"
+        ? currentHeight
+        : Math.max(currentHeight, incomingHeight, currentHeight)
+
+    if (heightFrameRef.current) {
+      window.cancelAnimationFrame(heightFrameRef.current)
+    }
+
+    if (nextHeight > 0) {
+      heightFrameRef.current = window.requestAnimationFrame(() => {
+        setStageHeight(nextHeight)
+        heightFrameRef.current = null
+      })
+    }
+
+    return () => {
+      if (heightFrameRef.current) {
+        window.cancelAnimationFrame(heightFrameRef.current)
+        heightFrameRef.current = null
+      }
+    }
+  }, [currentCard, incomingCard, phase])
 
   useEffect(() => {
     if (
@@ -703,6 +776,11 @@ function QuestionBox({
         window.cancelAnimationFrame(frameRef.current)
         frameRef.current = null
       }
+
+      if (heightFrameRef.current) {
+        window.cancelAnimationFrame(heightFrameRef.current)
+        heightFrameRef.current = null
+      }
     }
   }, [ENTER_MS, EXIT_MS, GAP_MS, currentCard, question, questionIndex])
 
@@ -710,10 +788,14 @@ function QuestionBox({
   const showIncoming = incomingCard && (phase === "prep" || phase === "enter")
 
   return (
-    <div className="question-box-stage mx-auto w-full max-w-[360px] overflow-hidden">
+    <div
+      className="question-box-stage mx-auto w-full max-w-[360px] overflow-hidden"
+      style={{ height: stageHeight ? `${stageHeight}px` : undefined }}
+    >
       {showCurrent ? (
         <section
-          className="question-box-motion rounded-[3px] bg-[#051413] px-[5px] py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]"
+          ref={currentCardRef}
+          className="question-box-motion rounded-[3px] bg-[#051413] px-3 py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]"
           data-phase={phase === "exit" ? "exit" : "idle"}
           style={{ transitionDuration: `${EXIT_MS}ms` }}
         >
@@ -728,7 +810,8 @@ function QuestionBox({
 
       {showIncoming ? (
         <section
-          className="question-box-motion question-box-motion-layer rounded-[3px] bg-[#051413] px-[5px] py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]"
+          ref={incomingCardRef}
+          className="question-box-motion question-box-motion-layer rounded-[3px] bg-[#051413] px-3 py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]"
           data-phase={phase}
           style={{
             transitionDuration: phase === "enter" ? `${ENTER_MS}ms` : "0ms",
@@ -755,6 +838,7 @@ function WordTiles({
   wrongIndex,
   correctIndex,
   shakeIndex,
+  tutorialHandIndex,
   onSelectTile,
 }: {
   currentWord: string
@@ -765,6 +849,7 @@ function WordTiles({
   wrongIndex: number | null
   correctIndex: number | null
   shakeIndex: number | null
+  tutorialHandIndex: number | null
   onSelectTile: (index: number) => void
 }) {
   const tileCount = currentWord.length
@@ -787,6 +872,7 @@ function WordTiles({
         const isWrong = wrongIndex === index
         const isCorrect = correctIndex === index
         const isShaking = shakeIndex === index
+        const showTutorialHand = tutorialHandIndex === index
 
         return (
           <button
@@ -822,6 +908,7 @@ function WordTiles({
                 </span>
               </span>
             ) : null}
+            {showTutorialHand ? <TutorialHand /> : null}
             <span className="relative z-10">{letter}</span>
           </button>
         )
@@ -830,9 +917,18 @@ function WordTiles({
   )
 }
 
-function Keyboard({ onLetter }: { onLetter: (letter: string) => void }) {
+function Keyboard({
+  onLetter,
+  visible,
+}: {
+  onLetter: (letter: string) => void
+  visible: boolean
+}) {
   return (
-    <div className="keyboard-enter fixed inset-x-0 bottom-0 z-20 m-0 w-full p-0">
+    <div
+      className="keyboard-shell fixed inset-x-0 bottom-0 z-20 m-0 w-full p-0"
+      data-visible={visible}
+    >
       <div className="w-full space-y-2.5 bg-[var(--Base-Colors-Tertiary,rgba(0,0,0,0.25))] px-2.5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {LETTER_ROWS.map((row, rowIndex) => (
           <div
@@ -877,6 +973,7 @@ function GameScreen({
   completedFlash,
   noticeMessage,
   noticeNonce,
+  tutorialHandIndex,
   onSelectTile,
   onLetter,
   onHint,
@@ -901,6 +998,7 @@ function GameScreen({
   completedFlash: boolean
   noticeMessage: string | null
   noticeNonce: number
+  tutorialHandIndex: number | null
   onSelectTile: (index: number) => void
   onLetter: (letter: string) => void
   onHint: () => void
@@ -938,6 +1036,7 @@ function GameScreen({
             wrongIndex={wrongIndex}
             correctIndex={correctIndex}
             shakeIndex={shakeIndex}
+            tutorialHandIndex={tutorialHandIndex}
             onSelectTile={onSelectTile}
           />
 
@@ -966,7 +1065,7 @@ function GameScreen({
           </div>
         </div>
 
-        {isKeyboardVisible ? <Keyboard onLetter={onLetter} /> : null}
+        <Keyboard onLetter={onLetter} visible={isKeyboardVisible} />
 
         {noticeMessage ? (
           <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center px-4">
@@ -986,10 +1085,14 @@ function GameScreen({
 function EndScreen({
   result,
   puzzleDate,
+  nextPuzzleDateLabel,
+  totalQuestions,
   onHome,
 }: {
   result: SavedResult
   puzzleDate: string
+  nextPuzzleDateLabel: string
+  totalQuestions: number
   onHome: () => void
 }) {
   return (
@@ -1003,7 +1106,7 @@ function EndScreen({
         </div>
 
         <div className="motion-step motion-step-2">
-          <ResultSummary result={result} />
+          <ResultSummary result={result} totalQuestions={totalQuestions} />
         </div>
 
         <div className="motion-step motion-step-3">
@@ -1013,11 +1116,7 @@ function EndScreen({
         <div className="motion-step motion-step-4 text-center">
           <p className={TYPO.label + " text-black/55"}>Next challenge</p>
           <p className={`mt-2 text-black ${TYPO.headline4}`}>
-            {formatLongDate(
-              new Date(new Date(`${puzzleDate}T00:00:00`).getTime() + 86400000)
-                .toISOString()
-                .slice(0, 10)
-            )}
+            {nextPuzzleDateLabel}
           </p>
         </div>
 
@@ -1043,12 +1142,17 @@ export default function Page() {
   const [completedResult, setCompletedResult] = useState<SavedResult | null>(
     null
   )
+  const [savedProgress, setSavedProgress] = useState<SavedProgress | null>(null)
   const [isTesterOpen, setIsTesterOpen] = useState(false)
+  const [hasSeenFirstQuestionHand, setHasSeenFirstQuestionHand] =
+    useState(false)
 
   const puzzleDate = activeSchedule.date
+  const systemDate = getTodayDateString()
   const startWord = activeSchedule.startWord.toUpperCase()
   const puzzles = activeSchedule.puzzles
   const storageKey = getResultStorageKey(puzzleDate)
+  const progressStorageKey = getProgressStorageKey(puzzleDate)
   const safeStartWord = startWord || "WORD"
   const safePuzzles: Puzzle[] =
     puzzles.length > 0
@@ -1063,6 +1167,7 @@ export default function Page() {
   const [streak, setStreak] = useState(0)
   const [longestStreak, setLongestStreak] = useState(0)
   const [bonusPoints, setBonusPoints] = useState(0)
+  const [revealCount, setRevealCount] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [correctIndex, setCorrectIndex] = useState<number | null>(null)
   const [shakeIndex, setShakeIndex] = useState<number | null>(null)
@@ -1088,12 +1193,26 @@ export default function Page() {
   const logoTapCountRef = useRef(0)
   const logoTapTimerRef = useRef<number | null>(null)
 
-  const dateLabel = useMemo(() => formatPuzzleDate(puzzleDate), [puzzleDate])
+  const dateLabel = useMemo(() => formatPuzzleDate(systemDate), [systemDate])
+  const nextPuzzleDateLabel = useMemo(
+    () => formatLongDate(addDaysToDateString(systemDate, 1)),
+    [systemDate]
+  )
 
   const currentPuzzle =
     safePuzzles[questionIndex] ?? safePuzzles[safePuzzles.length - 1]
   const currentWord = letters.join("")
   const answerIndex = getDiffIndex(currentWord, currentPuzzle.answer)
+  const tutorialHandIndex =
+    screen === "game" &&
+    questionIndex === 0 &&
+    selectedIndex === null &&
+    !completedFlash &&
+    !isPaused &&
+    !hasSeenFirstQuestionHand &&
+    answerIndex >= 0
+      ? answerIndex
+      : null
 
   function clearIdlePromptTimers() {
     if (idleHintTimerRef.current) {
@@ -1205,6 +1324,85 @@ export default function Page() {
     window.localStorage.setItem(storageKey, JSON.stringify(result))
   }
 
+  function markFirstQuestionHandSeen() {
+    window.localStorage.setItem(FIRST_QUESTION_HAND_STORAGE_KEY, "1")
+    setHasSeenFirstQuestionHand(true)
+  }
+
+  function clearStoredProgress(date = puzzleDate) {
+    window.localStorage.removeItem(getProgressStorageKey(date))
+  }
+
+  function isValidSavedProgress(
+    progress: SavedProgress,
+    schedule: PuzzleSchedule
+  ): boolean {
+    if (progress.date !== schedule.date) return false
+    if (!Array.isArray(progress.letters)) return false
+    if (
+      !Number.isInteger(progress.questionIndex) ||
+      progress.questionIndex < 0 ||
+      progress.questionIndex >= schedule.puzzles.length
+    ) {
+      return false
+    }
+
+    const expectedLength =
+      schedule.puzzles[progress.questionIndex]?.answer.length ??
+      schedule.startWord.length
+
+    if (progress.letters.length !== expectedLength) return false
+    if (
+      progress.selectedIndex !== null &&
+      (!Number.isInteger(progress.selectedIndex) ||
+        progress.selectedIndex < 0 ||
+        progress.selectedIndex >= progress.letters.length)
+    ) {
+      return false
+    }
+
+    return (
+      Number.isFinite(progress.mistakes) &&
+      Number.isFinite(progress.questionMistakes) &&
+      Number.isFinite(progress.streak) &&
+      Number.isFinite(progress.longestStreak) &&
+      Number.isFinite(progress.bonusPoints) &&
+      Number.isFinite(progress.elapsed)
+    )
+  }
+
+  function persistProgress(progress: SavedProgress) {
+    window.localStorage.setItem(progressStorageKey, JSON.stringify(progress))
+    setSavedProgress(progress)
+  }
+
+  function loadStoredProgress(schedule: PuzzleSchedule) {
+    const nextStorageKey = getProgressStorageKey(schedule.date)
+
+    try {
+      const raw = window.localStorage.getItem(nextStorageKey)
+      if (!raw) return null
+
+      const parsed = JSON.parse(raw) as SavedProgress
+      const normalizedProgress: SavedProgress = {
+        ...parsed,
+        revealCount: Number.isFinite(parsed.revealCount)
+          ? parsed.revealCount
+          : 0,
+      }
+
+      if (!isValidSavedProgress(normalizedProgress, schedule)) {
+        window.localStorage.removeItem(nextStorageKey)
+        return null
+      }
+
+      return normalizedProgress
+    } catch {
+      window.localStorage.removeItem(nextStorageKey)
+      return null
+    }
+  }
+
   function loadStoredResult(date: string) {
     const nextStorageKey = getResultStorageKey(date)
 
@@ -1213,7 +1411,14 @@ export default function Page() {
       if (!raw) return null
 
       const parsed = JSON.parse(raw) as SavedResult
-      return parsed?.date === date ? parsed : null
+      return parsed?.date === date
+        ? {
+            ...parsed,
+            revealCount: Number.isFinite(parsed.revealCount)
+              ? parsed.revealCount
+              : 0,
+          }
+        : null
     } catch {
       window.localStorage.removeItem(nextStorageKey)
       return null
@@ -1224,7 +1429,8 @@ export default function Page() {
     nextMistakes = mistakes,
     nextLongestStreak = longestStreak,
     nextElapsed = elapsed,
-    nextBonusPoints = bonusPoints
+    nextBonusPoints = bonusPoints,
+    nextRevealCount = revealCount
   ) {
     const score = computeScore(
       safePuzzles.length,
@@ -1238,11 +1444,14 @@ export default function Page() {
       seconds: nextElapsed,
       mistakes: nextMistakes,
       longestStreak: nextLongestStreak,
+      revealCount: nextRevealCount,
     }
 
     setCompletedResult(result)
+    setSavedProgress(null)
     setScreen("end")
     persistResult(result)
+    clearStoredProgress()
   }
 
   function advanceQuestion(
@@ -1250,12 +1459,19 @@ export default function Page() {
     nextMistakes = mistakes,
     nextLongestStreak = longestStreak,
     nextElapsed = elapsed,
-    nextBonusPoints = bonusPoints
+    nextBonusPoints = bonusPoints,
+    nextRevealCount = revealCount
   ) {
     clearPendingTimers()
 
     if (questionIndex >= safePuzzles.length - 1) {
-      finishGame(nextMistakes, nextLongestStreak, nextElapsed, nextBonusPoints)
+      finishGame(
+        nextMistakes,
+        nextLongestStreak,
+        nextElapsed,
+        nextBonusPoints,
+        nextRevealCount
+      )
       return
     }
 
@@ -1379,10 +1595,12 @@ export default function Page() {
 
     clearPendingTimers()
     const nextMistakes = mistakes + 3
+    const nextRevealCount = revealCount + 1
     const resolvedElapsed = timerStartRef.current
       ? Math.floor((Date.now() - timerStartRef.current) / 1000)
       : elapsed
     setMistakes((value) => value + 3)
+    setRevealCount(nextRevealCount)
     setStreak(0)
     setHintIndex(null)
     setHintFlashIndex(null)
@@ -1400,9 +1618,42 @@ export default function Page() {
         nextMistakes,
         longestStreak,
         resolvedElapsed,
-        bonusPoints
+        bonusPoints,
+        nextRevealCount
       )
     }, 520)
+  }
+
+  function applySavedProgress(
+    progress: SavedProgress,
+    schedule: PuzzleSchedule
+  ) {
+    clearPendingTimers()
+    setActiveSchedule(schedule)
+    setCompletedResult(loadStoredResult(schedule.date))
+    setScreen("game")
+    setIsPaused(false)
+    setQuestionIndex(progress.questionIndex)
+    setLetters(progress.letters)
+    setSelectedIndex(progress.selectedIndex)
+    setMistakes(progress.mistakes)
+    setQuestionMistakes(progress.questionMistakes)
+    setStreak(progress.streak)
+    setLongestStreak(progress.longestStreak)
+    setBonusPoints(progress.bonusPoints)
+    setRevealCount(progress.revealCount)
+    setElapsed(progress.elapsed)
+    setCorrectIndex(null)
+    setShakeIndex(null)
+    setHintIndex(null)
+    setHintFlashIndex(null)
+    setWrongIndex(null)
+    setCompletedFlash(false)
+    setNoticeMessage(null)
+    setHighlightHintButton(false)
+    setHighlightRevealButton(false)
+    setSavedProgress(progress)
+    timerStartRef.current = Date.now() - progress.elapsed * 1000
   }
 
   function startGame(options?: {
@@ -1413,15 +1664,22 @@ export default function Page() {
     const nextCompletedResult = options?.schedule
       ? loadStoredResult(nextSchedule.date)
       : completedResult
+    const nextSavedProgress = loadStoredProgress(nextSchedule)
     const nextStartWord = nextSchedule.startWord.toUpperCase() || "WORD"
 
     if (nextCompletedResult && !options?.ignoreCompleted) return
+    if (nextSavedProgress) {
+      applySavedProgress(nextSavedProgress, nextSchedule)
+      return
+    }
 
     clearPendingTimers()
+    clearStoredProgress(nextSchedule.date)
     if (options?.schedule) {
       setActiveSchedule(nextSchedule)
       setCompletedResult(nextCompletedResult)
     }
+    setSavedProgress(null)
     setScreen("game")
     setIsPaused(false)
     setQuestionIndex(0)
@@ -1432,6 +1690,7 @@ export default function Page() {
     setStreak(0)
     setLongestStreak(0)
     setBonusPoints(0)
+    setRevealCount(0)
     setElapsed(0)
     setCorrectIndex(null)
     setShakeIndex(null)
@@ -1447,10 +1706,12 @@ export default function Page() {
 
   function applySchedule(schedule: PuzzleSchedule) {
     const nextStartWord = schedule.startWord.toUpperCase() || "WORD"
+    const nextSavedProgress = loadStoredProgress(schedule)
 
     clearPendingTimers()
     setActiveSchedule(schedule)
     setCompletedResult(loadStoredResult(schedule.date))
+    setSavedProgress(nextSavedProgress)
     setScreen("home")
     setIsPaused(false)
     setQuestionIndex(0)
@@ -1461,6 +1722,7 @@ export default function Page() {
     setStreak(0)
     setLongestStreak(0)
     setBonusPoints(0)
+    setRevealCount(0)
     setElapsed(0)
     setCorrectIndex(null)
     setShakeIndex(null)
@@ -1499,6 +1761,9 @@ export default function Page() {
 
   function handleSelectTile(index: number) {
     registerQuestionActivity()
+    if (questionIndex === 0 && !hasSeenFirstQuestionHand) {
+      markFirstQuestionHandSeen()
+    }
     if (hintIndex === index) {
       setHintIndex(null)
     }
@@ -1508,7 +1773,11 @@ export default function Page() {
   function resetGame() {
     clearPendingTimers()
     window.localStorage.removeItem(storageKey)
+    window.localStorage.removeItem(FIRST_QUESTION_HAND_STORAGE_KEY)
+    clearStoredProgress()
     setCompletedResult(null)
+    setSavedProgress(null)
+    setHasSeenFirstQuestionHand(false)
     setScreen("home")
     setIsPaused(false)
     setQuestionIndex(0)
@@ -1519,6 +1788,7 @@ export default function Page() {
     setStreak(0)
     setLongestStreak(0)
     setBonusPoints(0)
+    setRevealCount(0)
     setElapsed(0)
     setCorrectIndex(null)
     setShakeIndex(null)
@@ -1547,6 +1817,10 @@ export default function Page() {
 
       try {
         setCompletedResult(loadStoredResult(nextSchedule.date))
+        setSavedProgress(loadStoredProgress(nextSchedule))
+        setHasSeenFirstQuestionHand(
+          window.localStorage.getItem(FIRST_QUESTION_HAND_STORAGE_KEY) === "1"
+        )
       } finally {
         setHydrated(true)
       }
@@ -1571,6 +1845,39 @@ export default function Page() {
     const interval = window.setInterval(tick, 1000)
     return () => window.clearInterval(interval)
   }, [screen, isPaused])
+
+  useEffect(() => {
+    if (screen !== "game" || completedResult) return
+
+    persistProgress({
+      date: puzzleDate,
+      questionIndex,
+      letters,
+      selectedIndex,
+      mistakes,
+      questionMistakes,
+      streak,
+      longestStreak,
+      bonusPoints,
+      revealCount,
+      elapsed,
+    })
+  }, [
+    bonusPoints,
+    completedResult,
+    elapsed,
+    letters,
+    longestStreak,
+    mistakes,
+    progressStorageKey,
+    puzzleDate,
+    questionIndex,
+    questionMistakes,
+    revealCount,
+    screen,
+    selectedIndex,
+    streak,
+  ])
 
   useEffect(() => {
     if (screen !== "game" || isPaused || completedFlash) {
@@ -1636,8 +1943,9 @@ export default function Page() {
           <HomeScreen
             dateLabel={dateLabel}
             completedResult={completedResult}
+            hasSavedProgress={savedProgress !== null}
             onLogoTap={handleLogoTap}
-            onStart={startGame}
+            onPrimaryAction={() => startGame()}
             onResetGame={resetGame}
           />
         ) : null}
@@ -1659,6 +1967,7 @@ export default function Page() {
             completedFlash={completedFlash}
             noticeMessage={noticeMessage}
             noticeNonce={noticeNonce}
+            tutorialHandIndex={tutorialHandIndex}
             onSelectTile={handleSelectTile}
             onLetter={handleLetter}
             onHint={handleHint}
@@ -1666,6 +1975,19 @@ export default function Page() {
             highlightHint={highlightHintButton}
             highlightReveal={highlightRevealButton}
             onHome={() => {
+              persistProgress({
+                date: puzzleDate,
+                questionIndex,
+                letters,
+                selectedIndex,
+                mistakes,
+                questionMistakes,
+                streak,
+                longestStreak,
+                bonusPoints,
+                revealCount,
+                elapsed,
+              })
               clearPendingTimers()
               clearIdlePrompts()
               setNoticeMessage(null)
@@ -1695,7 +2017,9 @@ export default function Page() {
         {screen === "end" && completedResult ? (
           <EndScreen
             result={completedResult}
-            puzzleDate={puzzleDate}
+            puzzleDate={systemDate}
+            nextPuzzleDateLabel={nextPuzzleDateLabel}
+            totalQuestions={safePuzzles.length}
             onHome={() => {
               setIsPaused(false)
               setScreen("home")

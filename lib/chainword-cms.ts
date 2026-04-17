@@ -61,6 +61,10 @@ export function getResultStorageKey(date: string) {
   return `chainword:${date}`
 }
 
+export function getProgressStorageKey(date: string) {
+  return `chainword:progress:${date}`
+}
+
 export function createFallbackSchedule(date = DEFAULT_DATE): PuzzleSchedule {
   const now = getNowIso()
   return {

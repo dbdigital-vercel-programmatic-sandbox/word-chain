@@ -552,9 +552,13 @@ function TesterScheduleModal({
 function GameSupportRow({
   onHint,
   onReveal,
+  highlightHint,
+  highlightReveal,
 }: {
   onHint: () => void
   onReveal: () => void
+  highlightHint: boolean
+  highlightReveal: boolean
 }) {
   const actions = [
     {
@@ -562,6 +566,7 @@ function GameSupportRow({
       icon: icons.hint,
       onClick: onHint,
       className: "bg-black text-white",
+      isHighlighted: highlightHint,
     },
     {
       label: "Reveal Word",
@@ -569,6 +574,7 @@ function GameSupportRow({
       onClick: onReveal,
       className: "border-[4px] border-black bg-transparent text-black",
       useRevealGlyph: true,
+      isHighlighted: highlightReveal,
     },
   ]
 
@@ -580,19 +586,26 @@ function GameSupportRow({
           type="button"
           onClick={action.onClick}
           className={cn(
-            "support-action-enter inline-flex h-11 flex-1 items-center justify-center gap-[10px] rounded-[12px] px-4 transition-transform active:translate-y-0.5",
+            "support-action-enter inline-flex h-11 flex-1 rounded-[12px] transition-transform active:translate-y-0.5",
             action.className
           )}
         >
-          <span className="h-4 w-4 shrink-0">
-            {action.useRevealGlyph ? (
-              <RevealGlyph />
-            ) : (
-              <Icon src={action.icon} alt="" />
+          <span
+            className={cn(
+              "inline-flex h-full w-full items-center justify-center gap-[10px] px-4",
+              action.isHighlighted && "support-action-highlight"
             )}
-          </span>
-          <span className="text-[16px] leading-[24px] font-semibold">
-            {action.label}
+          >
+            <span className="h-4 w-4 shrink-0">
+              {action.useRevealGlyph ? (
+                <RevealGlyph />
+              ) : (
+                <Icon src={action.icon} alt="" />
+              )}
+            </span>
+            <span className="text-[16px] leading-[24px] font-semibold">
+              {action.label}
+            </span>
           </span>
         </button>
       ))}
@@ -609,21 +622,132 @@ function QuestionBox({
   totalQuestions: number
   question: string
 }) {
+  const EXIT_MS = 220
+  const GAP_MS = 40
+  const ENTER_MS = 220
+  const [currentCard, setCurrentCard] = useState({
+    question,
+    questionIndex,
+  })
+  const [incomingCard, setIncomingCard] = useState<null | {
+    question: string
+    questionIndex: number
+  }>(null)
+  const [phase, setPhase] = useState<"idle" | "exit" | "prep" | "enter">("idle")
+  const exitTimerRef = useRef<number | null>(null)
+  const swapTimerRef = useRef<number | null>(null)
+  const settleTimerRef = useRef<number | null>(null)
+  const frameRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (
+      currentCard.question === question &&
+      currentCard.questionIndex === questionIndex
+    ) {
+      return
+    }
+
+    if (exitTimerRef.current) {
+      window.clearTimeout(exitTimerRef.current)
+    }
+
+    if (swapTimerRef.current) {
+      window.clearTimeout(swapTimerRef.current)
+    }
+
+    if (settleTimerRef.current) {
+      window.clearTimeout(settleTimerRef.current)
+    }
+
+    if (frameRef.current) {
+      window.cancelAnimationFrame(frameRef.current)
+    }
+
+    exitTimerRef.current = window.setTimeout(() => {
+      setPhase("exit")
+      exitTimerRef.current = null
+      swapTimerRef.current = window.setTimeout(() => {
+        setIncomingCard({ question, questionIndex })
+        setPhase("prep")
+        swapTimerRef.current = null
+        frameRef.current = window.requestAnimationFrame(() => {
+          setPhase("enter")
+          frameRef.current = null
+          settleTimerRef.current = window.setTimeout(() => {
+            setCurrentCard({ question, questionIndex })
+            setIncomingCard(null)
+            setPhase("idle")
+            settleTimerRef.current = null
+          }, ENTER_MS)
+        })
+      }, EXIT_MS + GAP_MS)
+    }, 0)
+
+    return () => {
+      if (exitTimerRef.current) {
+        window.clearTimeout(exitTimerRef.current)
+        exitTimerRef.current = null
+      }
+
+      if (swapTimerRef.current) {
+        window.clearTimeout(swapTimerRef.current)
+        swapTimerRef.current = null
+      }
+
+      if (settleTimerRef.current) {
+        window.clearTimeout(settleTimerRef.current)
+        settleTimerRef.current = null
+      }
+
+      if (frameRef.current) {
+        window.cancelAnimationFrame(frameRef.current)
+        frameRef.current = null
+      }
+    }
+  }, [ENTER_MS, EXIT_MS, GAP_MS, currentCard, question, questionIndex])
+
+  const showCurrent = phase === "idle" || phase === "exit"
+  const showIncoming = incomingCard && (phase === "prep" || phase === "enter")
+
   return (
-    <section className="question-enter mx-auto w-full max-w-[360px] rounded-[3px] bg-[#051413] px-[5px] py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]">
-      <p className="text-[11px] font-semibold tracking-[0.2em] text-[#A1E7CB] uppercase">
-        Question {questionIndex + 1}/{totalQuestions}
-      </p>
-      <h2 className="mt-1 text-[24px] leading-[36px] font-semibold text-white">
-        {question}
-      </h2>
-    </section>
+    <div className="question-box-stage mx-auto w-full max-w-[360px] overflow-hidden">
+      {showCurrent ? (
+        <section
+          className="question-box-motion rounded-[3px] bg-[#051413] px-[5px] py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]"
+          data-phase={phase === "exit" ? "exit" : "idle"}
+          style={{ transitionDuration: `${EXIT_MS}ms` }}
+        >
+          <p className="text-[11px] font-semibold tracking-[0.2em] text-[#A1E7CB] uppercase">
+            Question {currentCard.questionIndex + 1}/{totalQuestions}
+          </p>
+          <h2 className="mt-1 text-[24px] leading-[36px] font-semibold text-white">
+            {currentCard.question}
+          </h2>
+        </section>
+      ) : null}
+
+      {showIncoming ? (
+        <section
+          className="question-box-motion question-box-motion-layer rounded-[3px] bg-[#051413] px-[5px] py-2 text-center shadow-[0_10px_24px_rgba(5,20,19,0.18)]"
+          data-phase={phase}
+          style={{
+            transitionDuration: phase === "enter" ? `${ENTER_MS}ms` : "0ms",
+          }}
+        >
+          <p className="text-[11px] font-semibold tracking-[0.2em] text-[#A1E7CB] uppercase">
+            Question {incomingCard.questionIndex + 1}/{totalQuestions}
+          </p>
+          <h2 className="mt-1 text-[24px] leading-[36px] font-semibold text-white">
+            {incomingCard.question}
+          </h2>
+        </section>
+      ) : null}
+    </div>
   )
 }
 
 function WordTiles({
   currentWord,
-  questionIndex,
   completedFlash,
   selectedIndex,
   hintIndex,
@@ -634,7 +758,6 @@ function WordTiles({
   onSelectTile,
 }: {
   currentWord: string
-  questionIndex: number
   completedFlash: boolean
   selectedIndex: number | null
   hintIndex: number | null
@@ -667,7 +790,7 @@ function WordTiles({
 
         return (
           <button
-            key={`${questionIndex}-${index}`}
+            key={index}
             type="button"
             onClick={() => onSelectTile(index)}
             className={cn(
@@ -709,7 +832,7 @@ function WordTiles({
 
 function Keyboard({ onLetter }: { onLetter: (letter: string) => void }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 m-0 w-full p-0">
+    <div className="keyboard-enter fixed inset-x-0 bottom-0 z-20 m-0 w-full p-0">
       <div className="w-full space-y-2.5 bg-[var(--Base-Colors-Tertiary,rgba(0,0,0,0.25))] px-2.5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {LETTER_ROWS.map((row, rowIndex) => (
           <div
@@ -758,6 +881,8 @@ function GameScreen({
   onLetter,
   onHint,
   onReveal,
+  highlightHint,
+  highlightReveal,
   onHome,
   onPause,
 }: {
@@ -780,9 +905,13 @@ function GameScreen({
   onLetter: (letter: string) => void
   onHint: () => void
   onReveal: () => void
+  highlightHint: boolean
+  highlightReveal: boolean
   onHome: () => void
   onPause: () => void
 }) {
+  const isKeyboardVisible = selectedIndex !== null
+
   return (
     <>
       <GameScreenHeader
@@ -793,10 +922,7 @@ function GameScreen({
       />
 
       <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col px-4 pt-[104px] pb-[14rem] sm:px-6">
-        <div
-          key={questionIndex}
-          className="question-group-enter flex flex-1 flex-col items-center justify-center gap-8 pb-8"
-        >
+        <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-8">
           <QuestionBox
             questionIndex={questionIndex}
             totalQuestions={totalQuestions}
@@ -805,7 +931,6 @@ function GameScreen({
 
           <WordTiles
             currentWord={currentWord}
-            questionIndex={questionIndex}
             completedFlash={completedFlash}
             selectedIndex={selectedIndex}
             hintIndex={hintIndex}
@@ -815,15 +940,33 @@ function GameScreen({
             shakeIndex={shakeIndex}
             onSelectTile={onSelectTile}
           />
+
+          <p className="text-center text-[16px] leading-[24px] font-semibold text-black/40">
+            {isKeyboardVisible
+              ? "Change one letter to answer"
+              : "Tap a tile to change the word"}
+          </p>
         </div>
 
-        <div className="fixed inset-x-0 bottom-[calc(11.5rem+env(safe-area-inset-bottom))] z-20 px-4 sm:px-6">
-          <div className="mx-auto flex w-full max-w-[520px] justify-center">
-            <GameSupportRow onHint={onHint} onReveal={onReveal} />
+        <div
+          className={cn(
+            "fixed inset-x-0 z-20 px-4 sm:px-6",
+            isKeyboardVisible
+              ? "bottom-[calc(11.5rem+env(safe-area-inset-bottom))]"
+              : "bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
+          )}
+        >
+          <div className="mx-auto flex w-full max-w-[520px] flex-col items-center gap-3">
+            <GameSupportRow
+              onHint={onHint}
+              onReveal={onReveal}
+              highlightHint={highlightHint}
+              highlightReveal={highlightReveal}
+            />
           </div>
         </div>
 
-        <Keyboard onLetter={onLetter} />
+        {isKeyboardVisible ? <Keyboard onLetter={onLetter} /> : null}
 
         {noticeMessage ? (
           <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center px-4">
@@ -916,6 +1059,7 @@ export default function Page() {
   const [letters, setLetters] = useState(safeStartWord.split(""))
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [mistakes, setMistakes] = useState(0)
+  const [questionMistakes, setQuestionMistakes] = useState(0)
   const [streak, setStreak] = useState(0)
   const [longestStreak, setLongestStreak] = useState(0)
   const [bonusPoints, setBonusPoints] = useState(0)
@@ -929,12 +1073,18 @@ export default function Page() {
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null)
   const [noticeNonce, setNoticeNonce] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [highlightHintButton, setHighlightHintButton] = useState(false)
+  const [highlightRevealButton, setHighlightRevealButton] = useState(false)
 
   const timerStartRef = useRef<number | null>(null)
   const feedbackTimerRef = useRef<number | null>(null)
   const revealTimerRef = useRef<number | null>(null)
   const noticeTimerRef = useRef<number | null>(null)
   const hintTimerRef = useRef<number | null>(null)
+  const idleHintTimerRef = useRef<number | null>(null)
+  const idleRevealTimerRef = useRef<number | null>(null)
+  const hintHighlightTimerRef = useRef<number | null>(null)
+  const revealHighlightTimerRef = useRef<number | null>(null)
   const logoTapCountRef = useRef(0)
   const logoTapTimerRef = useRef<number | null>(null)
 
@@ -944,6 +1094,78 @@ export default function Page() {
     safePuzzles[questionIndex] ?? safePuzzles[safePuzzles.length - 1]
   const currentWord = letters.join("")
   const answerIndex = getDiffIndex(currentWord, currentPuzzle.answer)
+
+  function clearIdlePromptTimers() {
+    if (idleHintTimerRef.current) {
+      window.clearTimeout(idleHintTimerRef.current)
+      idleHintTimerRef.current = null
+    }
+    if (idleRevealTimerRef.current) {
+      window.clearTimeout(idleRevealTimerRef.current)
+      idleRevealTimerRef.current = null
+    }
+    if (hintHighlightTimerRef.current) {
+      window.clearTimeout(hintHighlightTimerRef.current)
+      hintHighlightTimerRef.current = null
+    }
+    if (revealHighlightTimerRef.current) {
+      window.clearTimeout(revealHighlightTimerRef.current)
+      revealHighlightTimerRef.current = null
+    }
+  }
+
+  function clearIdlePrompts() {
+    clearIdlePromptTimers()
+    setHighlightHintButton(false)
+    setHighlightRevealButton(false)
+  }
+
+  function pulseHintPrompt() {
+    if (hintHighlightTimerRef.current) {
+      window.clearTimeout(hintHighlightTimerRef.current)
+    }
+
+    setHighlightHintButton(true)
+    hintHighlightTimerRef.current = window.setTimeout(() => {
+      setHighlightHintButton(false)
+      hintHighlightTimerRef.current = null
+    }, 2000)
+  }
+
+  function pulseRevealPrompt() {
+    if (revealHighlightTimerRef.current) {
+      window.clearTimeout(revealHighlightTimerRef.current)
+    }
+
+    setHighlightRevealButton(true)
+    revealHighlightTimerRef.current = window.setTimeout(() => {
+      setHighlightRevealButton(false)
+      revealHighlightTimerRef.current = null
+    }, 2000)
+  }
+
+  function scheduleIdlePrompts() {
+    clearIdlePrompts()
+
+    idleHintTimerRef.current = window.setTimeout(() => {
+      pulseHintPrompt()
+      idleHintTimerRef.current = null
+    }, 4000)
+
+    idleRevealTimerRef.current = window.setTimeout(() => {
+      pulseRevealPrompt()
+      idleRevealTimerRef.current = null
+    }, 10000)
+  }
+
+  function registerQuestionActivity() {
+    if (screen !== "game" || completedFlash || isPaused) {
+      clearIdlePrompts()
+      return
+    }
+
+    scheduleIdlePrompts()
+  }
 
   function clearPendingTimers() {
     if (feedbackTimerRef.current) {
@@ -962,6 +1184,7 @@ export default function Page() {
       window.clearTimeout(hintTimerRef.current)
       hintTimerRef.current = null
     }
+    clearIdlePromptTimers()
   }
 
   function showNotice(message: string) {
@@ -1046,10 +1269,14 @@ export default function Page() {
     setWrongIndex(null)
     setCompletedFlash(false)
     setNoticeMessage(null)
+    setQuestionMistakes(0)
+    setHighlightHintButton(false)
+    setHighlightRevealButton(false)
   }
 
   function handleLetter(letter: string) {
     if (screen !== "game" || completedFlash || isPaused) return
+    registerQuestionActivity()
 
     if (selectedIndex === null) {
       showNotice("Tap a tile first.")
@@ -1096,7 +1323,9 @@ export default function Page() {
     }
 
     clearPendingTimers()
+    const nextQuestionMistakes = questionMistakes + 1
     setMistakes((value) => value + 1)
+    setQuestionMistakes(nextQuestionMistakes)
     setStreak(0)
     setHintIndex(null)
     setHintFlashIndex(null)
@@ -1104,6 +1333,13 @@ export default function Page() {
     setShakeIndex(activeIndex)
     setCompletedFlash(false)
     setSelectedIndex(activeIndex)
+
+    if (nextQuestionMistakes === 2) {
+      pulseHintPrompt()
+    }
+    if (nextQuestionMistakes === 4) {
+      pulseRevealPrompt()
+    }
 
     feedbackTimerRef.current = window.setTimeout(() => {
       setLetters((value: string[]) => {
@@ -1118,6 +1354,7 @@ export default function Page() {
 
   function handleHint() {
     if (screen !== "game" || completedFlash || isPaused) return
+    registerQuestionActivity()
     const nextHintIndex = answerIndex >= 0 ? answerIndex : 0
     setHintIndex(nextHintIndex)
     setWrongIndex(null)
@@ -1138,6 +1375,7 @@ export default function Page() {
 
   function handleReveal() {
     if (screen !== "game" || completedFlash || isPaused) return
+    registerQuestionActivity()
 
     clearPendingTimers()
     const nextMistakes = mistakes + 3
@@ -1152,6 +1390,8 @@ export default function Page() {
     setWrongIndex(null)
     setLetters(currentPuzzle.answer.split(""))
     setCompletedFlash(true)
+    setHighlightHintButton(false)
+    setHighlightRevealButton(false)
 
     revealTimerRef.current = window.setTimeout(() => {
       setCompletedFlash(false)
@@ -1188,6 +1428,7 @@ export default function Page() {
     setLetters(nextStartWord.split(""))
     setSelectedIndex(null)
     setMistakes(0)
+    setQuestionMistakes(0)
     setStreak(0)
     setLongestStreak(0)
     setBonusPoints(0)
@@ -1199,6 +1440,8 @@ export default function Page() {
     setWrongIndex(null)
     setCompletedFlash(false)
     setNoticeMessage(null)
+    setHighlightHintButton(false)
+    setHighlightRevealButton(false)
     timerStartRef.current = Date.now()
   }
 
@@ -1214,6 +1457,7 @@ export default function Page() {
     setLetters(nextStartWord.split(""))
     setSelectedIndex(null)
     setMistakes(0)
+    setQuestionMistakes(0)
     setStreak(0)
     setLongestStreak(0)
     setBonusPoints(0)
@@ -1225,6 +1469,8 @@ export default function Page() {
     setWrongIndex(null)
     setCompletedFlash(false)
     setNoticeMessage(null)
+    setHighlightHintButton(false)
+    setHighlightRevealButton(false)
     timerStartRef.current = null
   }
 
@@ -1252,6 +1498,7 @@ export default function Page() {
   }
 
   function handleSelectTile(index: number) {
+    registerQuestionActivity()
     if (hintIndex === index) {
       setHintIndex(null)
     }
@@ -1268,6 +1515,7 @@ export default function Page() {
     setLetters(safeStartWord.split(""))
     setSelectedIndex(null)
     setMistakes(0)
+    setQuestionMistakes(0)
     setStreak(0)
     setLongestStreak(0)
     setBonusPoints(0)
@@ -1279,6 +1527,8 @@ export default function Page() {
     setWrongIndex(null)
     setCompletedFlash(false)
     setNoticeMessage(null)
+    setHighlightHintButton(false)
+    setHighlightRevealButton(false)
     timerStartRef.current = null
   }
 
@@ -1321,6 +1571,19 @@ export default function Page() {
     const interval = window.setInterval(tick, 1000)
     return () => window.clearInterval(interval)
   }, [screen, isPaused])
+
+  useEffect(() => {
+    if (screen !== "game" || isPaused || completedFlash) {
+      clearIdlePrompts()
+      return
+    }
+
+    scheduleIdlePrompts()
+
+    return () => {
+      clearIdlePrompts()
+    }
+  }, [questionIndex, screen, isPaused, completedFlash])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1400,8 +1663,11 @@ export default function Page() {
             onLetter={handleLetter}
             onHint={handleHint}
             onReveal={handleReveal}
+            highlightHint={highlightHintButton}
+            highlightReveal={highlightRevealButton}
             onHome={() => {
               clearPendingTimers()
+              clearIdlePrompts()
               setNoticeMessage(null)
               setIsPaused(false)
               setScreen("home")

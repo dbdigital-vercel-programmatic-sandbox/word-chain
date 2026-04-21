@@ -115,6 +115,43 @@ const icons = {
     "https://raw.githubusercontent.com/joefrancis-dot/DLS-assets/main/Trophy.svg",
 } as const
 
+const PRELOADED_GAME_ASSET_URLS = [
+  GAME_LOGO_URL,
+  FIRST_QUESTION_HAND_IMAGE_URL,
+  ...Object.values(icons),
+]
+
+const GAME_COPY = {
+  home: {
+    title: "Wordचेन",
+    tagline: "एक-एक अक्षर बदलें, नए शब्दों की चेन बनाए",
+    start: "पजल शुरू करें",
+    resume: "खेल जारी रखें",
+    completed: "आज का मिशन पूरा",
+  },
+  game: {
+    tapTileHint: "अक्षर बदलने के लिए टाइल पर टैप करें",
+    changeLetterHint: "एक अक्षर बदलकर उत्तर बनाएं",
+    hint: "हिंट",
+    reveal: "उत्तर देखें",
+  },
+  pause: {
+    title: "गेम पॉज है",
+    subtitle: "चेन को अधूरा मत छोड़ें",
+    resume: "खेल जारी रखें",
+  },
+  summary: {
+    title: "बधाई!",
+    subtitle: "आपने आज के सारे शब्द खोज लिए",
+    score: "आपका स्कोर",
+    time: "समय",
+    mistakes: "गलतियां",
+    streak: "आपकी स्ट्रीक",
+    nextChallenge: "अगला चैलेंज",
+    home: "होम पेज",
+  },
+} as const
+
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ")
 }
@@ -382,9 +419,11 @@ function PauseModal({ onResume }: { onResume: () => void }) {
         <div className="mx-auto flex h-12 w-12 items-center justify-center">
           <Icon src={icons.timer} alt="Paused" />
         </div>
-        <h3 className={`mt-4 text-black ${TYPO.headline1}`}>Paused</h3>
+        <h3 className={`mt-4 text-black ${TYPO.headline1}`}>
+          {GAME_COPY.pause.title}
+        </h3>
         <p className={`mt-2 text-black/70 ${TYPO.body1}`}>
-          The chain is waiting for you.
+          {GAME_COPY.pause.subtitle}
         </p>
         <div className="mt-6">
           <DlsButton
@@ -392,7 +431,7 @@ function PauseModal({ onResume }: { onResume: () => void }) {
             onClick={onResume}
             className="w-full"
           >
-            Resume
+            {GAME_COPY.pause.resume}
           </DlsButton>
         </div>
       </div>
@@ -412,7 +451,9 @@ function ResultSummary({
   return (
     <section className="rounded-[24px] bg-white px-4 py-4">
       <div className="flex items-center justify-between gap-3">
-        <p className={TYPO.headline3 + " text-black"}>Total score</p>
+        <p className={TYPO.headline3 + " text-black"}>
+          {GAME_COPY.summary.score}
+        </p>
         <p
           className={TYPO.display2 + " text-black"}
         >{`${score}/${totalQuestions}`}</p>
@@ -422,11 +463,11 @@ function ResultSummary({
         <div className="grid grid-cols-2 gap-3 text-center">
           {[
             {
-              label: "Time",
+              label: GAME_COPY.summary.time,
               value: formatClock(result.seconds),
             },
             {
-              label: "Mistakes",
+              label: GAME_COPY.summary.mistakes,
               value: String(result.mistakes),
             },
           ].map((item) => (
@@ -457,7 +498,7 @@ function StreakCard({ puzzleDate }: { puzzleDate: string }) {
   return (
     <section className="rounded-[24px] bg-white p-4">
       <div className="flex items-center justify-between">
-        <h3 className={TYPO.headline3}>Streak</h3>
+        <h3 className={TYPO.headline3}>{GAME_COPY.summary.streak}</h3>
         <span className="h-6 w-6">
           <Icon src={icons.fire} alt="Streak" />
         </span>
@@ -504,7 +545,7 @@ function SummaryHero({ title, subtitle }: { title: string; subtitle: string }) {
       </div>
       <p className={`mt-4 text-black/55 ${TYPO.headline1}`}>{title}</p>
       <h2 className="mt-2 text-[28px] leading-[1.1] font-bold text-black">
-        Nice run.
+        {GAME_COPY.summary.title}
       </h2>
       <p className={`mt-2 text-black/70 ${TYPO.body1}`}>{subtitle}</p>
     </div>
@@ -554,7 +595,7 @@ function HomeScreen({
             isLeaving && "screen-exit-home-copy screen-exit-home-copy-1"
           )}
         >
-          ChainWord
+          {GAME_COPY.home.title}
         </h1>
         <p
           className={cn(
@@ -562,8 +603,7 @@ function HomeScreen({
             isLeaving && "screen-exit-home-copy screen-exit-home-copy-2"
           )}
         >
-          Change exactly one letter to unlock the next clue. Ten links, one
-          chain.
+          {GAME_COPY.home.tagline}
         </p>
         <p
           className={cn(
@@ -582,10 +622,12 @@ function HomeScreen({
         )}
       >
         {completedResult ? (
-          <DlsButton variant="disabled-large">Puzzle Finished</DlsButton>
+          <DlsButton variant="disabled-large">
+            {GAME_COPY.home.completed}
+          </DlsButton>
         ) : (
           <DlsButton variant="primary-large" onClick={onPrimaryAction}>
-            {hasSavedProgress ? "Continue" : "Start"}
+            {hasSavedProgress ? GAME_COPY.home.resume : GAME_COPY.home.start}
           </DlsButton>
         )}
       </div>
@@ -698,14 +740,14 @@ function GameSupportRow({
 }) {
   const actions = [
     {
-      label: "Hint",
+      label: GAME_COPY.game.hint,
       icon: icons.hint,
       onClick: onHint,
       className: "bg-black text-white",
       isHighlighted: highlightHint,
     },
     {
-      label: "Reveal Word",
+      label: GAME_COPY.game.reveal,
       icon: "",
       onClick: onReveal,
       className: "border-[4px] border-black bg-transparent text-black",
@@ -947,6 +989,18 @@ function WordTiles({
   const tileCount = currentWord.length
   const tileGap = Math.max(8, 22 - tileCount * 2)
   const tileMaxWidth = Math.min(420, 240 + tileCount * 21)
+  const [showTileEnter, setShowTileEnter] = useState(true)
+
+  useEffect(() => {
+    setShowTileEnter(true)
+    const timer = window.setTimeout(() => {
+      setShowTileEnter(false)
+    }, 340)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [questionIndex])
 
   return (
     <div
@@ -1050,7 +1104,7 @@ function WordTiles({
               disabled={tutorialTileLocked && !isTutorialTarget}
               className={cn(
                 "relative flex aspect-square w-full items-center justify-center rounded-[4px] text-[24px] font-semibold uppercase transition-[background-color,box-shadow,color,opacity] duration-200 focus-visible:outline-none active:translate-y-0.5 sm:text-[26px]",
-                "tile-enter",
+                showTileEnter && "tile-enter",
                 completedFlash || isCorrect
                   ? "bg-[#3E9E3E] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,0.25)]"
                   : isWrong
@@ -1300,8 +1354,8 @@ function GameScreen({
             )}
           >
             {isKeyboardVisible
-              ? "Change one letter to answer"
-              : "Tap a tile to change the word"}
+              ? GAME_COPY.game.changeLetterHint
+              : GAME_COPY.game.tapTileHint}
           </p>
         </div>
 
@@ -1373,8 +1427,8 @@ function EndScreen({
       <div className="w-full max-w-[420px] space-y-5">
         <div className="motion-step motion-step-1">
           <SummaryHero
-            title="Chain complete"
-            subtitle="You finished today's word ladder and locked in a score."
+            title={GAME_COPY.summary.title}
+            subtitle={GAME_COPY.summary.subtitle}
           />
         </div>
 
@@ -1387,7 +1441,9 @@ function EndScreen({
         </div>
 
         <div className="motion-step motion-step-4 text-center">
-          <p className={TYPO.label + " text-black/55"}>Next challenge</p>
+          <p className={TYPO.label + " text-black/55"}>
+            {GAME_COPY.summary.nextChallenge}
+          </p>
           <p className={`mt-2 text-black ${TYPO.headline4}`}>
             {nextPuzzleDateLabel}
           </p>
@@ -1395,7 +1451,7 @@ function EndScreen({
 
         <div className="motion-step motion-step-5 space-y-3">
           <DlsButton variant="primary-large" onClick={onHome} icon={icons.home}>
-            Back to Home
+            {GAME_COPY.summary.home}
           </DlsButton>
         </div>
       </div>
@@ -1883,6 +1939,7 @@ export default function Page() {
     setMistakes((value) => value + 1)
     setQuestionMistakes(nextQuestionMistakes)
     setStreak(0)
+    setLetters(nextLetters)
     setHintIndex(null)
     setHintFlashIndex(null)
     setWrongIndex(activeIndex)
@@ -2166,6 +2223,20 @@ export default function Page() {
     setHighlightRevealButton(false)
     timerStartRef.current = null
   }
+
+  useEffect(() => {
+    const imagePreloads = PRELOADED_GAME_ASSET_URLS.map((src) => {
+      const image = new window.Image()
+      image.src = src
+      return image
+    })
+
+    return () => {
+      imagePreloads.forEach((image) => {
+        image.src = ""
+      })
+    }
+  }, [])
 
   useEffect(() => {
     let isMounted = true

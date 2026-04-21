@@ -24,6 +24,15 @@ import {
 
 type Screen = "home" | "game" | "end"
 type TutorialStep = "tile" | "keyboard"
+type ScreenTransitionKind =
+  | "home-to-game"
+  | "home-to-guided-game"
+  | "game-to-end"
+
+type ScreenTransitionState = {
+  kind: ScreenTransitionKind
+  nonce: number
+}
 
 type SavedResult = {
   date: string
@@ -307,16 +316,23 @@ function GameScreenHeader({
   onHome,
   onPause,
   tutorialLocked,
+  isExiting,
 }: {
   dateLabel: string
   timerText: string
   onHome: () => void
   onPause: () => void
   tutorialLocked: boolean
+  isExiting: boolean
 }) {
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-40 px-3 pt-3">
+      <div
+        className={cn(
+          "fixed inset-x-0 top-0 z-40 px-3 pt-3",
+          isExiting && "screen-exit-game-top"
+        )}
+      >
         <div className="mx-auto flex w-full max-w-[520px] justify-start">
           <div className="flex w-10 shrink-0 items-center justify-start">
             <IconShellButton icon={icons.home} onClick={onHome} label="Home" />
@@ -327,7 +343,8 @@ function GameScreenHeader({
       <header
         className={cn(
           "fixed inset-x-0 top-0 bg-transparent px-3 pt-3",
-          tutorialLocked ? "z-0" : "z-30"
+          tutorialLocked ? "z-0" : "z-30",
+          isExiting && "screen-exit-game-top"
         )}
       >
         <div className="mx-auto flex w-full max-w-[520px] flex-col gap-2">
@@ -501,6 +518,7 @@ function HomeScreen({
   onLogoTap,
   onPrimaryAction,
   onResetGame,
+  transitionKind,
 }: {
   dateLabel: string
   completedResult: SavedResult | null
@@ -508,35 +526,61 @@ function HomeScreen({
   onLogoTap: () => void
   onPrimaryAction: () => void
   onResetGame: () => void
+  transitionKind: ScreenTransitionKind | null
 }) {
+  const isLeaving = transitionKind !== null
+
   return (
-    <div className="screen-enter mx-auto flex w-full max-w-[520px] flex-1 flex-col items-center justify-center px-4 py-8 text-center sm:px-6">
+    <div
+      className={cn(
+        "screen-enter mx-auto flex w-full max-w-[520px] flex-1 flex-col items-center justify-center px-4 py-8 text-center sm:px-6",
+        isLeaving && "screen-exit-home"
+      )}
+      data-transition-kind={transitionKind ?? undefined}
+    >
       <div className="w-full max-w-[420px]">
         <img
           src={GAME_LOGO_URL}
           alt="Word Chain game logo"
           onClick={onLogoTap}
-          className="hero-logo-enter mx-auto h-auto w-full max-w-[150px] object-contain"
+          className={cn(
+            "hero-logo-enter mx-auto h-auto w-full max-w-[150px] object-contain",
+            isLeaving && "screen-exit-home-logo"
+          )}
         />
-        <h1 className="motion-step motion-step-1 mt-4 text-[32px] leading-[1.05] font-bold text-black sm:text-[40px]">
+        <h1
+          className={cn(
+            "motion-step motion-step-1 mt-4 text-[32px] leading-[1.05] font-bold text-black sm:text-[40px]",
+            isLeaving && "screen-exit-home-copy screen-exit-home-copy-1"
+          )}
+        >
           ChainWord
         </h1>
         <p
-          className={`motion-step motion-step-2 mt-3 text-black/70 ${TYPO.body1}`}
+          className={cn(
+            `motion-step motion-step-2 mt-3 text-black/70 ${TYPO.body1}`,
+            isLeaving && "screen-exit-home-copy screen-exit-home-copy-2"
+          )}
         >
           Change exactly one letter to unlock the next clue. Ten links, one
           chain.
         </p>
         <p
-          className={
-            TYPO.label + " motion-step motion-step-3 mt-3 text-black/55"
-          }
+          className={cn(
+            TYPO.label + " motion-step motion-step-3 mt-3 text-black/55",
+            isLeaving && "screen-exit-home-copy screen-exit-home-copy-3"
+          )}
         >
           {dateLabel}
         </p>
       </div>
 
-      <div className="motion-step motion-step-4 mt-6 w-full max-w-[420px]">
+      <div
+        className={cn(
+          "motion-step motion-step-4 mt-6 w-full max-w-[420px]",
+          isLeaving && "screen-exit-home-cta"
+        )}
+      >
         {completedResult ? (
           <DlsButton variant="disabled-large">Puzzle Finished</DlsButton>
         ) : (
@@ -692,7 +736,7 @@ function GameSupportRow({
               <Icon src={action.icon} alt="" />
             )}
           </span>
-          <span className="text-[16px] leading-[24px] font-semibold">
+          <span className="text-[16px] leading-[24px] font-semibold whitespace-nowrap">
             {action.label}
           </span>
         </button>
@@ -879,14 +923,11 @@ function WordTiles({
   questionIndex,
   currentWord,
   completedFlash,
-  showSuccessCelebration,
-  successCelebrationNonce,
   selectedIndex,
   hintIndex,
   hintFlashIndex,
   wrongIndex,
   correctIndex,
-  shakeIndex,
   tutorialStep,
   tutorialTargetTileIndex,
   onSelectTile,
@@ -894,14 +935,11 @@ function WordTiles({
   questionIndex: number
   currentWord: string
   completedFlash: boolean
-  showSuccessCelebration: boolean
-  successCelebrationNonce: number
   selectedIndex: number | null
   hintIndex: number | null
   hintFlashIndex: number | null
   wrongIndex: number | null
   correctIndex: number | null
-  shakeIndex: number | null
   tutorialStep: TutorialStep | null
   tutorialTargetTileIndex: number | null
   onSelectTile: (index: number) => void
@@ -909,18 +947,6 @@ function WordTiles({
   const tileCount = currentWord.length
   const tileGap = Math.max(8, 22 - tileCount * 2)
   const tileMaxWidth = Math.min(420, 240 + tileCount * 21)
-  const [showTileEnter, setShowTileEnter] = useState(true)
-
-  useEffect(() => {
-    setShowTileEnter(true)
-    const timer = window.setTimeout(() => {
-      setShowTileEnter(false)
-    }, 340)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [questionIndex])
 
   return (
     <div
@@ -930,6 +956,7 @@ function WordTiles({
       }}
     >
       <div
+        key={`tiles-${questionIndex}`}
         className="grid w-full justify-center"
         style={{
           gridTemplateColumns: `repeat(${tileCount}, minmax(0, 1fr))`,
@@ -1023,7 +1050,7 @@ function WordTiles({
               disabled={tutorialTileLocked && !isTutorialTarget}
               className={cn(
                 "relative flex aspect-square w-full items-center justify-center rounded-[4px] text-[24px] font-semibold uppercase transition-[background-color,box-shadow,color,opacity] duration-200 focus-visible:outline-none active:translate-y-0.5 sm:text-[26px]",
-                showTileEnter && "tile-enter",
+                "tile-enter",
                 completedFlash || isCorrect
                   ? "bg-[#3E9E3E] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,0.25)]"
                   : isWrong
@@ -1041,6 +1068,7 @@ function WordTiles({
                 isCorrect && "tile-correct-bounce",
                 isSuccessReaction && "tile-success-react",
                 isHintFlash && "tile-hint-flash",
+                showTutorialHand && "z-20",
                 tutorialTileLocked &&
                   !isTutorialTarget &&
                   "pointer-events-none opacity-30"
@@ -1072,15 +1100,20 @@ function Keyboard({
   visible,
   tutorialStep,
   tutorialTargetLetter,
+  className,
 }: {
   onLetter: (letter: string) => void
   visible: boolean
   tutorialStep: TutorialStep | null
   tutorialTargetLetter: string | null
+  className?: string
 }) {
   return (
     <div
-      className="keyboard-shell fixed inset-x-0 bottom-0 z-20 m-0 w-full p-0"
+      className={cn(
+        "keyboard-shell fixed inset-x-0 bottom-0 z-20 m-0 w-full p-0",
+        className
+      )}
       data-visible={visible}
     >
       <div className="w-full space-y-2.5 bg-[var(--Base-Colors-Tertiary,rgba(0,0,0,0.25))] px-2.5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -1137,7 +1170,6 @@ function GameScreen({
   hintFlashIndex,
   wrongIndex,
   correctIndex,
-  shakeIndex,
   completedFlash,
   showSuccessCelebration,
   successCelebrationNonce,
@@ -1155,6 +1187,7 @@ function GameScreen({
   highlightReveal,
   onHome,
   onPause,
+  transitionKind,
 }: {
   dateLabel: string
   elapsed: number
@@ -1167,7 +1200,6 @@ function GameScreen({
   hintFlashIndex: number | null
   wrongIndex: number | null
   correctIndex: number | null
-  shakeIndex: number | null
   completedFlash: boolean
   showSuccessCelebration: boolean
   successCelebrationNonce: number
@@ -1185,8 +1217,10 @@ function GameScreen({
   highlightReveal: boolean
   onHome: () => void
   onPause: () => void
+  transitionKind: ScreenTransitionKind | null
 }) {
   const isKeyboardVisible = selectedIndex !== null
+  const isLeavingToEnd = transitionKind === "game-to-end"
 
   return (
     <>
@@ -1210,40 +1244,61 @@ function GameScreen({
         onHome={onHome}
         onPause={onPause}
         tutorialLocked={tutorialLocked}
+        isExiting={isLeavingToEnd}
       />
 
       {tutorialLocked ? (
         <div className="tutorial-overlay-enter pointer-events-none fixed inset-0 z-10 bg-black/72" />
       ) : null}
 
-      <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col px-4 pt-[104px] pb-[14rem] sm:px-6">
+      <div
+        className={cn(
+          "mx-auto flex w-full max-w-[520px] flex-1 flex-col px-4 pt-[104px] pb-[14rem] sm:px-6",
+          isLeavingToEnd && "screen-exit-game"
+        )}
+      >
         <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-8">
-          <div className="relative z-20 flex w-full flex-col items-center gap-8">
+          <div
+            className={cn(
+              "relative flex w-full flex-col items-center gap-8",
+              !tutorialLocked && "z-20",
+              isLeavingToEnd && "screen-exit-game-board"
+            )}
+          >
             <QuestionBox
               questionIndex={questionIndex}
               totalQuestions={totalQuestions}
               question={question}
             />
 
-            <WordTiles
-              questionIndex={questionIndex}
-              currentWord={currentWord}
-              completedFlash={completedFlash}
-              showSuccessCelebration={showSuccessCelebration}
-              successCelebrationNonce={successCelebrationNonce}
-              selectedIndex={selectedIndex}
-              hintIndex={hintIndex}
-              hintFlashIndex={hintFlashIndex}
-              wrongIndex={wrongIndex}
-              correctIndex={correctIndex}
-              shakeIndex={shakeIndex}
-              tutorialStep={tutorialStep}
-              tutorialTargetTileIndex={tutorialTargetTileIndex}
-              onSelectTile={onSelectTile}
-            />
+            <div
+              className={cn(
+                "w-full",
+                isLeavingToEnd && "screen-exit-game-tiles"
+              )}
+            >
+              <WordTiles
+                questionIndex={questionIndex}
+                currentWord={currentWord}
+                completedFlash={completedFlash}
+                selectedIndex={selectedIndex}
+                hintIndex={hintIndex}
+                hintFlashIndex={hintFlashIndex}
+                wrongIndex={wrongIndex}
+                correctIndex={correctIndex}
+                tutorialStep={tutorialStep}
+                tutorialTargetTileIndex={tutorialTargetTileIndex}
+                onSelectTile={onSelectTile}
+              />
+            </div>
           </div>
 
-          <p className="relative z-0 text-center text-[16px] leading-[24px] font-semibold text-black/40">
+          <p
+            className={cn(
+              "relative z-0 text-center text-[16px] leading-[24px] font-semibold text-black/40",
+              isLeavingToEnd && "screen-exit-game-copy"
+            )}
+          >
             {isKeyboardVisible
               ? "Change one letter to answer"
               : "Tap a tile to change the word"}
@@ -1260,13 +1315,20 @@ function GameScreen({
           )}
         >
           <div className="mx-auto flex w-full max-w-[520px] flex-col items-center gap-3">
-            <GameSupportRow
-              onHint={onHint}
-              onReveal={onReveal}
-              highlightHint={highlightHint}
-              highlightReveal={highlightReveal}
-              disabled={tutorialLocked}
-            />
+            <div
+              className={cn(
+                "w-full",
+                isLeavingToEnd && "screen-exit-game-support"
+              )}
+            >
+              <GameSupportRow
+                onHint={onHint}
+                onReveal={onReveal}
+                highlightHint={highlightHint}
+                highlightReveal={highlightReveal}
+                disabled={tutorialLocked}
+              />
+            </div>
           </div>
         </div>
 
@@ -1275,6 +1337,7 @@ function GameScreen({
           visible={isKeyboardVisible}
           tutorialStep={tutorialStep}
           tutorialTargetLetter={tutorialTargetLetter}
+          className={cn(isLeavingToEnd && "screen-exit-game-keyboard")}
         />
 
         {noticeMessage ? (
@@ -1342,6 +1405,8 @@ function EndScreen({
 
 export default function Page() {
   const [screen, setScreen] = useState<Screen>("home")
+  const [screenTransition, setScreenTransition] =
+    useState<ScreenTransitionState | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [activeSchedule, setActiveSchedule] = useState<PuzzleSchedule>(() =>
     createFallbackSchedule()
@@ -1403,6 +1468,8 @@ export default function Page() {
   const revealHighlightTimerRef = useRef<number | null>(null)
   const logoTapCountRef = useRef(0)
   const logoTapTimerRef = useRef<number | null>(null)
+  const screenTransitionStageTimerRef = useRef<number | null>(null)
+  const screenTransitionNonceRef = useRef(0)
 
   const dateLabel = useMemo(() => formatPuzzleDate(systemDate), [systemDate])
   const nextPuzzleDateLabel = useMemo(
@@ -1432,6 +1499,46 @@ export default function Page() {
     tutorialStep === "keyboard" && tutorialTargetTileIndex !== null
       ? (currentPuzzle.answer[tutorialTargetTileIndex]?.toUpperCase() ?? null)
       : null
+
+  function clearScreenTransitionTimers() {
+    if (screenTransitionStageTimerRef.current) {
+      window.clearTimeout(screenTransitionStageTimerRef.current)
+      screenTransitionStageTimerRef.current = null
+    }
+  }
+
+  function runScreenTransition(
+    nextScreen: Screen,
+    kind: ScreenTransitionKind,
+    beforeScreenSwitch?: () => void
+  ) {
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches
+    const leaveDuration = prefersReducedMotion
+      ? 24
+      : kind === "home-to-guided-game"
+        ? 240
+        : kind === "game-to-end"
+          ? 220
+          : 180
+
+    clearScreenTransitionTimers()
+    beforeScreenSwitch?.()
+
+    const nonce = screenTransitionNonceRef.current + 1
+    screenTransitionNonceRef.current = nonce
+
+    setScreenTransition({ kind, nonce })
+
+    screenTransitionStageTimerRef.current = window.setTimeout(() => {
+      screenTransitionStageTimerRef.current = null
+      setScreen(nextScreen)
+      setScreenTransition((value) =>
+        value && value.nonce === nonce ? null : value
+      )
+    }, leaveDuration)
+  }
 
   function clearIdlePromptTimers() {
     if (idleHintTimerRef.current) {
@@ -1666,11 +1773,12 @@ export default function Page() {
       revealCount: nextRevealCount,
     }
 
-    setCompletedResult(result)
-    setSavedProgress(null)
-    setScreen("end")
-    persistResult(result)
-    clearStoredProgress()
+    runScreenTransition("end", "game-to-end", () => {
+      setCompletedResult(result)
+      setSavedProgress(null)
+      persistResult(result)
+      clearStoredProgress()
+    })
   }
 
   function advanceQuestion(
@@ -1868,7 +1976,6 @@ export default function Page() {
     clearPendingTimers()
     setActiveSchedule(schedule)
     setCompletedResult(loadStoredResult(schedule.date))
-    setScreen("game")
     setIsPaused(false)
     setQuestionIndex(progress.questionIndex)
     setLetters(progress.letters)
@@ -1892,6 +1999,15 @@ export default function Page() {
     setHighlightRevealButton(false)
     setSavedProgress(progress)
     timerStartRef.current = Date.now() - progress.elapsed * 1000
+
+    const isGuidedStart =
+      !hasCompletedTutorial &&
+      progress.questionIndex < Math.min(2, schedule.puzzles.length)
+
+    runScreenTransition(
+      "game",
+      isGuidedStart ? "home-to-guided-game" : "home-to-game"
+    )
   }
 
   function startGame(options?: {
@@ -1917,30 +2033,39 @@ export default function Page() {
       setActiveSchedule(nextSchedule)
       setCompletedResult(nextCompletedResult)
     }
-    setSavedProgress(null)
-    setScreen("game")
-    setIsPaused(false)
-    setQuestionIndex(0)
-    setLetters(nextStartWord.split(""))
-    setSelectedIndex(null)
-    setMistakes(0)
-    setQuestionMistakes(0)
-    setStreak(0)
-    setLongestStreak(0)
-    setBonusPoints(0)
-    setRevealCount(0)
-    setElapsed(0)
-    setCorrectIndex(null)
-    setShakeIndex(null)
-    setHintIndex(null)
-    setHintFlashIndex(null)
-    setWrongIndex(null)
-    setCompletedFlash(false)
-    setShowSuccessCelebration(false)
-    setNoticeMessage(null)
-    setHighlightHintButton(false)
-    setHighlightRevealButton(false)
-    timerStartRef.current = Date.now()
+
+    const tutorialLimit = Math.min(2, nextSchedule.puzzles.length)
+    const isGuidedStart = !hasCompletedTutorial && tutorialLimit > 0
+
+    runScreenTransition(
+      "game",
+      isGuidedStart ? "home-to-guided-game" : "home-to-game",
+      () => {
+        setSavedProgress(null)
+        setIsPaused(false)
+        setQuestionIndex(0)
+        setLetters(nextStartWord.split(""))
+        setSelectedIndex(null)
+        setMistakes(0)
+        setQuestionMistakes(0)
+        setStreak(0)
+        setLongestStreak(0)
+        setBonusPoints(0)
+        setRevealCount(0)
+        setElapsed(0)
+        setCorrectIndex(null)
+        setShakeIndex(null)
+        setHintIndex(null)
+        setHintFlashIndex(null)
+        setWrongIndex(null)
+        setCompletedFlash(false)
+        setShowSuccessCelebration(false)
+        setNoticeMessage(null)
+        setHighlightHintButton(false)
+        setHighlightRevealButton(false)
+        timerStartRef.current = Date.now()
+      }
+    )
   }
 
   function applySchedule(schedule: PuzzleSchedule) {
@@ -2149,6 +2274,12 @@ export default function Page() {
 
   useEffect(() => {
     return () => {
+      clearScreenTransitionTimers()
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
       clearPendingTimers()
       if (logoTapTimerRef.current) {
         window.clearTimeout(logoTapTimerRef.current)
@@ -2188,6 +2319,7 @@ export default function Page() {
             onLogoTap={handleLogoTap}
             onPrimaryAction={() => startGame()}
             onResetGame={resetGame}
+            transitionKind={screenTransition?.kind ?? null}
           />
         ) : null}
 
@@ -2204,7 +2336,6 @@ export default function Page() {
             hintFlashIndex={hintFlashIndex}
             wrongIndex={wrongIndex}
             correctIndex={correctIndex}
-            shakeIndex={shakeIndex}
             completedFlash={completedFlash}
             showSuccessCelebration={showSuccessCelebration}
             successCelebrationNonce={successCelebrationNonce}
@@ -2244,6 +2375,7 @@ export default function Page() {
               if (tutorialLocked) return
               setIsPaused(true)
             }}
+            transitionKind={screenTransition?.kind ?? null}
           />
         ) : null}
 

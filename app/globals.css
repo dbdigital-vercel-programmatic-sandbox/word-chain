@@ -397,6 +397,104 @@
   }
 }
 
+@keyframes screen-exit-home-logo {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(0.92) rotate(-5deg);
+  }
+}
+
+@keyframes screen-exit-home-copy {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}
+
+@keyframes screen-exit-home-cta {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+}
+
+@keyframes screen-exit-game-top {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}
+
+@keyframes screen-exit-game-board {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-24px) scale(0.98);
+  }
+}
+
+@keyframes screen-exit-game-tiles {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(1.04);
+  }
+}
+
+@keyframes screen-exit-game-copy {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes screen-exit-game-support {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+}
+
+@keyframes screen-exit-game-keyboard {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+}
+
 @keyframes tile-correct-bounce {
   0% {
     transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
@@ -892,6 +990,69 @@
   animation: modal-panel-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+.screen-exit-home-logo {
+  animation: screen-exit-home-logo 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.screen-exit-home-copy {
+  animation: screen-exit-home-copy 0.18s ease-out both;
+}
+
+.screen-exit-home-copy-1 {
+  animation-delay: 0ms;
+}
+
+.screen-exit-home-copy-2 {
+  animation-delay: 24ms;
+}
+
+.screen-exit-home-copy-3 {
+  animation-delay: 42ms;
+}
+
+.screen-exit-home-cta {
+  animation: screen-exit-home-cta 0.2s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  animation-delay: 28ms;
+}
+
+.screen-exit-home[data-transition-kind="home-to-guided-game"]
+  .screen-exit-home-logo {
+  animation-duration: 0.26s;
+  transform-origin: 50% 100%;
+}
+
+.screen-exit-home[data-transition-kind="home-to-guided-game"]
+  .screen-exit-home-cta {
+  animation-duration: 0.22s;
+}
+
+.screen-exit-game-top {
+  animation: screen-exit-game-top 0.18s ease-out both;
+}
+
+.screen-exit-game-board {
+  animation: screen-exit-game-board 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.screen-exit-game-tiles {
+  animation: screen-exit-game-tiles 0.2s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  animation-delay: 26ms;
+}
+
+.screen-exit-game-copy {
+  animation: screen-exit-game-copy 0.16s ease-out both;
+  animation-delay: 20ms;
+}
+
+.screen-exit-game-support {
+  animation: screen-exit-game-support 0.18s ease-out both;
+  animation-delay: 24ms;
+}
+
+.screen-exit-game-keyboard {
+  animation: screen-exit-game-keyboard 0.18s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -920,7 +1081,16 @@
   .tile-correct-bounce,
   .tile-success-react,
   .tile-wrong-row,
-  .tile-wrong-neighbor {
+  .tile-wrong-neighbor,
+  .screen-exit-home-logo,
+  .screen-exit-home-copy,
+  .screen-exit-home-cta,
+  .screen-exit-game-top,
+  .screen-exit-game-board,
+  .screen-exit-game-tiles,
+  .screen-exit-game-copy,
+  .screen-exit-game-support,
+  .screen-exit-game-keyboard {
     animation: none !important;
     transform: none !important;
   }

@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  type CSSProperties,
   useEffect,
   useMemo,
   useRef,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/chainword-cms"
 
 type Screen = "home" | "game" | "end"
+type TutorialStep = "tile" | "keyboard"
 
 type SavedResult = {
   date: string
@@ -162,16 +164,37 @@ function Icon({ src, alt }: { src: string; alt: string }) {
   return <img src={src} alt={alt} className="h-full w-full object-contain" />
 }
 
-function TutorialHand() {
+function TutorialHand({ placement }: { placement: "tile" | "key" }) {
+  const isTile = placement === "tile"
+
   return (
     <span
       aria-hidden="true"
-      className="tutorial-hand pointer-events-none absolute inset-0 z-20 flex items-end justify-end"
+      className={cn(
+        "tutorial-hand pointer-events-none absolute inset-0 z-20 flex",
+        isTile ? "items-end justify-end" : "items-end justify-center"
+      )}
     >
+      <span
+        className={cn(
+          "tutorial-ripple-wrap absolute",
+          isTile
+            ? "right-0 bottom-0 translate-x-[16%] translate-y-[18%]"
+            : "right-1 bottom-0 translate-x-[8%] translate-y-[24%]"
+        )}
+      >
+        <span className="tutorial-ripple tutorial-ripple-delay-1" />
+        <span className="tutorial-ripple tutorial-ripple-delay-2" />
+      </span>
       <img
         src={FIRST_QUESTION_HAND_IMAGE_URL}
         alt=""
-        className="tutorial-hand-image h-[82px] w-[82px] max-w-none translate-x-[40%] translate-y-[42%] select-none sm:h-[90px] sm:w-[90px]"
+        className={cn(
+          "tutorial-hand-image max-w-none select-none",
+          isTile
+            ? "h-[82px] w-[82px] translate-x-[40%] translate-y-[42%] sm:h-[90px] sm:w-[90px]"
+            : "h-[56px] w-[56px] translate-x-[20%] translate-y-[38%] sm:h-[62px] sm:w-[62px]"
+        )}
       />
     </span>
   )
@@ -256,17 +279,20 @@ function IconShellButton({
   icon,
   onClick,
   label,
+  disabled = false,
 }: {
   icon: string
   onClick: () => void
   label: string
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-black text-white transition-transform active:translate-y-0.5"
+      disabled={disabled}
+      className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-black text-white transition-transform active:translate-y-0.5 disabled:opacity-45 disabled:active:translate-y-0"
     >
       <span className="h-5 w-5">
         <Icon src={icon} alt={label} />
@@ -280,39 +306,55 @@ function GameScreenHeader({
   timerText,
   onHome,
   onPause,
+  tutorialLocked,
 }: {
   dateLabel: string
   timerText: string
   onHome: () => void
   onPause: () => void
+  tutorialLocked: boolean
 }) {
   return (
-    <header className="fixed inset-x-0 top-0 z-30 bg-transparent px-3 pt-3">
-      <div className="mx-auto flex w-full max-w-[520px] flex-col gap-2">
-        <div className="flex items-center gap-2">
+    <>
+      <div className="fixed inset-x-0 top-0 z-40 px-3 pt-3">
+        <div className="mx-auto flex w-full max-w-[520px] justify-start">
           <div className="flex w-10 shrink-0 items-center justify-start">
             <IconShellButton icon={icons.home} onClick={onHome} label="Home" />
           </div>
-          <div className="flex-1 text-center">
-            <p className={`${TYPO.headline3} text-black`}>{dateLabel}</p>
-          </div>
-          <div className="flex w-10 shrink-0 items-center justify-end" />
-        </div>
-        <div className="flex items-center justify-center gap-3 text-center">
-          <button
-            type="button"
-            onClick={onPause}
-            aria-label="Pause"
-            className={`inline-flex items-center gap-2 rounded-[999px] bg-black px-4 py-2 text-white ${TYPO.headline4}`}
-          >
-            <span className="h-4 w-4">
-              <PauseGlyph />
-            </span>
-            {timerText}
-          </button>
         </div>
       </div>
-    </header>
+
+      <header
+        className={cn(
+          "fixed inset-x-0 top-0 bg-transparent px-3 pt-3",
+          tutorialLocked ? "z-0" : "z-30"
+        )}
+      >
+        <div className="mx-auto flex w-full max-w-[520px] flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex w-10 shrink-0 items-center justify-start" />
+            <div className="flex-1 text-center">
+              <p className={`${TYPO.headline3} text-black`}>{dateLabel}</p>
+            </div>
+            <div className="flex w-10 shrink-0 items-center justify-end" />
+          </div>
+          <div className="flex items-center justify-center gap-3 text-center">
+            <button
+              type="button"
+              onClick={onPause}
+              aria-label="Pause"
+              disabled={tutorialLocked}
+              className={`inline-flex items-center gap-2 rounded-[999px] bg-black px-4 py-2 text-white ${TYPO.headline4}`}
+            >
+              <span className="h-4 w-4">
+                <PauseGlyph />
+              </span>
+              {timerText}
+            </button>
+          </div>
+        </div>
+      </header>
+    </>
   )
 }
 
@@ -602,11 +644,13 @@ function GameSupportRow({
   onReveal,
   highlightHint,
   highlightReveal,
+  disabled = false,
 }: {
   onHint: () => void
   onReveal: () => void
   highlightHint: boolean
   highlightReveal: boolean
+  disabled?: boolean
 }) {
   const actions = [
     {
@@ -633,10 +677,12 @@ function GameSupportRow({
           key={action.label}
           type="button"
           onClick={action.onClick}
+          disabled={disabled}
           className={cn(
             "inline-flex h-11 flex-1 items-center justify-center gap-[10px] rounded-[12px] px-4 transition-transform active:translate-y-0.5",
             action.className,
-            action.isHighlighted && "support-action-highlight"
+            action.isHighlighted && !disabled && "support-action-highlight",
+            disabled && "pointer-events-none opacity-45 active:translate-y-0"
           )}
         >
           <span className="h-4 w-4 shrink-0">
@@ -830,89 +876,193 @@ function QuestionBox({
 }
 
 function WordTiles({
+  questionIndex,
   currentWord,
   completedFlash,
+  showSuccessCelebration,
+  successCelebrationNonce,
   selectedIndex,
   hintIndex,
   hintFlashIndex,
   wrongIndex,
   correctIndex,
   shakeIndex,
-  tutorialHandIndex,
+  tutorialStep,
+  tutorialTargetTileIndex,
   onSelectTile,
 }: {
+  questionIndex: number
   currentWord: string
   completedFlash: boolean
+  showSuccessCelebration: boolean
+  successCelebrationNonce: number
   selectedIndex: number | null
   hintIndex: number | null
   hintFlashIndex: number | null
   wrongIndex: number | null
   correctIndex: number | null
   shakeIndex: number | null
-  tutorialHandIndex: number | null
+  tutorialStep: TutorialStep | null
+  tutorialTargetTileIndex: number | null
   onSelectTile: (index: number) => void
 }) {
   const tileCount = currentWord.length
   const tileGap = Math.max(8, 22 - tileCount * 2)
   const tileMaxWidth = Math.min(420, 240 + tileCount * 21)
+  const [showTileEnter, setShowTileEnter] = useState(true)
+
+  useEffect(() => {
+    setShowTileEnter(true)
+    const timer = window.setTimeout(() => {
+      setShowTileEnter(false)
+    }, 340)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [questionIndex])
 
   return (
     <div
-      className="mx-auto mt-2 grid w-full justify-center"
+      className="relative mx-auto mt-2 w-full overflow-visible"
       style={{
         maxWidth: `${tileMaxWidth}px`,
-        gridTemplateColumns: `repeat(${tileCount}, minmax(0, 1fr))`,
-        gap: `${tileGap}px`,
       }}
     >
-      {currentWord.split("").map((letter, index) => {
-        const isSelected = selectedIndex === index
-        const isHinted = hintIndex === index
-        const isHintFlash = hintFlashIndex === index
-        const isWrong = wrongIndex === index
-        const isCorrect = correctIndex === index
-        const isShaking = shakeIndex === index
-        const showTutorialHand = tutorialHandIndex === index
+      <div
+        className="grid w-full justify-center"
+        style={{
+          gridTemplateColumns: `repeat(${tileCount}, minmax(0, 1fr))`,
+          gap: `${tileGap}px`,
+        }}
+      >
+        {currentWord.split("").map((letter, index) => {
+          const isSelected = selectedIndex === index
+          const isHinted = hintIndex === index
+          const isHintFlash = hintFlashIndex === index
+          const isWrong = wrongIndex === index
+          const isCorrect = correctIndex === index
+          const wrongDistance =
+            wrongIndex === null ? null : Math.abs(wrongIndex - index)
+          const correctDistance =
+            correctIndex === null ? null : Math.abs(correctIndex - index)
+          const isWrongNeighbor = wrongDistance === 1 || wrongDistance === 2
+          const isSuccessReaction =
+            completedFlash && correctDistance !== null && correctDistance > 0
+          const tutorialTileLocked = tutorialStep === "tile"
+          const isTutorialTarget = tutorialTargetTileIndex === index
+          const showTutorialHand = tutorialTileLocked && isTutorialTarget
+          const tileMotionStyle: CSSProperties & Record<string, string> = {
+            animationDelay: `${index * 24}ms`,
+            fontSize:
+              tileCount >= 6 ? "20px" : tileCount === 5 ? "22px" : "24px",
+          }
 
-        return (
-          <button
-            key={index}
-            type="button"
-            onClick={() => onSelectTile(index)}
-            className={cn(
-              "tile-enter relative flex aspect-square w-full items-center justify-center rounded-[4px] text-[24px] font-semibold uppercase transition-all duration-200 focus-visible:outline-none active:translate-y-0.5 sm:text-[26px]",
-              completedFlash || isCorrect
-                ? "bg-[#3E9E3E] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,0.25)]"
-                : isWrong
-                  ? "bg-[#F44336] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,0.25)]"
-                  : isHintFlash
-                    ? "bg-[#FFB005] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,1)]"
-                    : isSelected
-                      ? "bg-black text-white shadow-[inset_0_4px_0_0_rgba(19,141,112,1)]"
-                      : isHinted
-                        ? "bg-[#FFB005] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,1)]"
-                        : "bg-white text-black shadow-[inset_0_-4px_0_0_rgba(19,141,112,1)]",
-              isShaking && "tile-shake",
-              isHintFlash && "tile-hint-flash"
-            )}
-            style={{
-              animationDelay: `${index * 24}ms`,
-              fontSize:
-                tileCount >= 6 ? "20px" : tileCount === 5 ? "22px" : "24px",
-            }}
-          >
-            {isHinted ? (
-              <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-80">
-                <span className="glow-pulse absolute h-10 w-10">
-                  <Icon src={icons.ray} alt="Hint glow" />
+          if (wrongDistance !== null) {
+            tileMotionStyle["--wrong-wobble-rotate"] = isWrong
+              ? "8deg"
+              : wrongDistance === 1
+                ? index % 2 === 0
+                  ? "5deg"
+                  : "-5deg"
+                : index % 2 === 0
+                  ? "2.75deg"
+                  : "-2.75deg"
+            tileMotionStyle["--wrong-wobble-shift"] = isWrong
+              ? "10px"
+              : wrongDistance === 1
+                ? "6px"
+                : "3px"
+            tileMotionStyle["--wrong-wobble-squash"] = isWrong
+              ? "0.92"
+              : wrongDistance === 1
+                ? "0.96"
+                : "0.985"
+          }
+
+          if (correctDistance !== null) {
+            tileMotionStyle["--success-react-lift"] =
+              correctDistance === 0
+                ? "10px"
+                : correctDistance === 1
+                  ? "7px"
+                  : correctDistance === 2
+                    ? "5px"
+                    : "3px"
+            tileMotionStyle["--success-react-tilt"] =
+              correctDistance === 0
+                ? index % 2 === 0
+                  ? "-5deg"
+                  : "5deg"
+                : correctDistance === 1
+                  ? index % 2 === 0
+                    ? "-4deg"
+                    : "4deg"
+                  : correctDistance === 2
+                    ? index % 2 === 0
+                      ? "-2.5deg"
+                      : "2.5deg"
+                    : index % 2 === 0
+                      ? "-1.5deg"
+                      : "1.5deg"
+            tileMotionStyle["--success-react-delay"] =
+              correctDistance === 0
+                ? "0ms"
+                : correctDistance === 1
+                  ? "40ms"
+                  : correctDistance === 2
+                    ? "78ms"
+                    : "108ms"
+          }
+
+          return (
+            <button
+              key={index}
+              type="button"
+              onClick={() => onSelectTile(index)}
+              disabled={tutorialTileLocked && !isTutorialTarget}
+              className={cn(
+                "relative flex aspect-square w-full items-center justify-center rounded-[4px] text-[24px] font-semibold uppercase transition-[background-color,box-shadow,color,opacity] duration-200 focus-visible:outline-none active:translate-y-0.5 sm:text-[26px]",
+                showTileEnter && "tile-enter",
+                completedFlash || isCorrect
+                  ? "bg-[#3E9E3E] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,0.25)]"
+                  : isWrong
+                    ? "bg-[#F44336] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,0.25)]"
+                    : isHintFlash
+                      ? "bg-[#FFB005] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,1)]"
+                      : isSelected
+                        ? "bg-black text-white shadow-[inset_0_4px_0_0_rgba(19,141,112,1)]"
+                        : isHinted
+                          ? "bg-[#FFB005] text-white shadow-[inset_0_-4px_0_0_rgba(0,0,0,1)]"
+                          : "bg-white text-black shadow-[inset_0_-4px_0_0_rgba(19,141,112,1)]",
+                wrongIndex !== null && "tile-wrong-row",
+                isWrong && "tile-wrong-hero",
+                isWrongNeighbor && "tile-wrong-neighbor",
+                isCorrect && "tile-correct-bounce",
+                isSuccessReaction && "tile-success-react",
+                isHintFlash && "tile-hint-flash",
+                tutorialTileLocked &&
+                  !isTutorialTarget &&
+                  "pointer-events-none opacity-30"
+              )}
+              style={tileMotionStyle}
+            >
+              {isWrong ? (
+                <span className="tile-wrong-impact" aria-hidden="true" />
+              ) : null}
+              {isHinted ? (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-80">
+                  <span className="glow-pulse absolute h-10 w-10">
+                    <Icon src={icons.ray} alt="Hint glow" />
+                  </span>
                 </span>
-              </span>
-            ) : null}
-            {showTutorialHand ? <TutorialHand /> : null}
-            <span className="relative z-10">{letter}</span>
-          </button>
-        )
-      })}
+              ) : null}
+              {showTutorialHand ? <TutorialHand placement="tile" /> : null}
+              <span className="relative z-10">{letter}</span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -920,9 +1070,13 @@ function WordTiles({
 function Keyboard({
   onLetter,
   visible,
+  tutorialStep,
+  tutorialTargetLetter,
 }: {
   onLetter: (letter: string) => void
   visible: boolean
+  tutorialStep: TutorialStep | null
+  tutorialTargetLetter: string | null
 }) {
   return (
     <div
@@ -940,16 +1094,30 @@ function Keyboard({
               rowIndex === 2 && "grid-cols-7 px-8"
             )}
           >
-            {row.map((letter) => (
-              <button
-                key={letter}
-                type="button"
-                onClick={() => onLetter(letter)}
-                className={`h-11 rounded-[12px] bg-white text-black shadow-[0px_1.7777777910232544px_0_rgba(0,0,0,0.25)] transition-transform active:translate-y-0.5 ${TYPO.headline5}`}
-              >
-                {letter}
-              </button>
-            ))}
+            {row.map((letter) => {
+              const tutorialKeyLocked = tutorialStep === "keyboard"
+              const isTutorialTarget = tutorialTargetLetter === letter
+
+              return (
+                <button
+                  key={letter}
+                  type="button"
+                  onClick={() => onLetter(letter)}
+                  disabled={tutorialKeyLocked && !isTutorialTarget}
+                  className={cn(
+                    `relative h-11 rounded-[12px] bg-white text-black shadow-[0px_1.7777777910232544px_0_rgba(0,0,0,0.25)] transition-transform active:translate-y-0.5 ${TYPO.headline5}`,
+                    tutorialKeyLocked &&
+                      !isTutorialTarget &&
+                      "pointer-events-none opacity-30"
+                  )}
+                >
+                  {tutorialKeyLocked && isTutorialTarget ? (
+                    <TutorialHand placement="key" />
+                  ) : null}
+                  {letter}
+                </button>
+              )
+            })}
           </div>
         ))}
       </div>
@@ -971,9 +1139,14 @@ function GameScreen({
   correctIndex,
   shakeIndex,
   completedFlash,
+  showSuccessCelebration,
+  successCelebrationNonce,
   noticeMessage,
   noticeNonce,
-  tutorialHandIndex,
+  tutorialStep,
+  tutorialTargetTileIndex,
+  tutorialTargetLetter,
+  tutorialLocked,
   onSelectTile,
   onLetter,
   onHint,
@@ -996,9 +1169,14 @@ function GameScreen({
   correctIndex: number | null
   shakeIndex: number | null
   completedFlash: boolean
+  showSuccessCelebration: boolean
+  successCelebrationNonce: number
   noticeMessage: string | null
   noticeNonce: number
-  tutorialHandIndex: number | null
+  tutorialStep: TutorialStep | null
+  tutorialTargetTileIndex: number | null
+  tutorialTargetLetter: string | null
+  tutorialLocked: boolean
   onSelectTile: (index: number) => void
   onLetter: (letter: string) => void
   onHint: () => void
@@ -1012,35 +1190,60 @@ function GameScreen({
 
   return (
     <>
+      {showSuccessCelebration ? (
+        <span
+          key={successCelebrationNonce}
+          aria-hidden="true"
+          className="success-screen-celebration"
+        >
+          <span className="success-screen-ripple-field">
+            <span className="success-screen-arc success-screen-arc-1" />
+            <span className="success-screen-arc success-screen-arc-2" />
+            <span className="success-screen-arc success-screen-arc-3" />
+          </span>
+        </span>
+      ) : null}
+
       <GameScreenHeader
         dateLabel={dateLabel}
         timerText={formatClock(elapsed)}
         onHome={onHome}
         onPause={onPause}
+        tutorialLocked={tutorialLocked}
       />
+
+      {tutorialLocked ? (
+        <div className="tutorial-overlay-enter pointer-events-none fixed inset-0 z-10 bg-black/72" />
+      ) : null}
 
       <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col px-4 pt-[104px] pb-[14rem] sm:px-6">
         <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-8">
-          <QuestionBox
-            questionIndex={questionIndex}
-            totalQuestions={totalQuestions}
-            question={question}
-          />
+          <div className="relative z-20 flex w-full flex-col items-center gap-8">
+            <QuestionBox
+              questionIndex={questionIndex}
+              totalQuestions={totalQuestions}
+              question={question}
+            />
 
-          <WordTiles
-            currentWord={currentWord}
-            completedFlash={completedFlash}
-            selectedIndex={selectedIndex}
-            hintIndex={hintIndex}
-            hintFlashIndex={hintFlashIndex}
-            wrongIndex={wrongIndex}
-            correctIndex={correctIndex}
-            shakeIndex={shakeIndex}
-            tutorialHandIndex={tutorialHandIndex}
-            onSelectTile={onSelectTile}
-          />
+            <WordTiles
+              questionIndex={questionIndex}
+              currentWord={currentWord}
+              completedFlash={completedFlash}
+              showSuccessCelebration={showSuccessCelebration}
+              successCelebrationNonce={successCelebrationNonce}
+              selectedIndex={selectedIndex}
+              hintIndex={hintIndex}
+              hintFlashIndex={hintFlashIndex}
+              wrongIndex={wrongIndex}
+              correctIndex={correctIndex}
+              shakeIndex={shakeIndex}
+              tutorialStep={tutorialStep}
+              tutorialTargetTileIndex={tutorialTargetTileIndex}
+              onSelectTile={onSelectTile}
+            />
+          </div>
 
-          <p className="text-center text-[16px] leading-[24px] font-semibold text-black/40">
+          <p className="relative z-0 text-center text-[16px] leading-[24px] font-semibold text-black/40">
             {isKeyboardVisible
               ? "Change one letter to answer"
               : "Tap a tile to change the word"}
@@ -1049,7 +1252,8 @@ function GameScreen({
 
         <div
           className={cn(
-            "fixed inset-x-0 z-20 px-4 sm:px-6",
+            "fixed inset-x-0 px-4 sm:px-6",
+            tutorialLocked ? "z-0" : "z-20",
             isKeyboardVisible
               ? "bottom-[calc(11.5rem+env(safe-area-inset-bottom))]"
               : "bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
@@ -1061,11 +1265,17 @@ function GameScreen({
               onReveal={onReveal}
               highlightHint={highlightHint}
               highlightReveal={highlightReveal}
+              disabled={tutorialLocked}
             />
           </div>
         </div>
 
-        <Keyboard onLetter={onLetter} visible={isKeyboardVisible} />
+        <Keyboard
+          onLetter={onLetter}
+          visible={isKeyboardVisible}
+          tutorialStep={tutorialStep}
+          tutorialTargetLetter={tutorialTargetLetter}
+        />
 
         {noticeMessage ? (
           <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center px-4">
@@ -1144,8 +1354,7 @@ export default function Page() {
   )
   const [savedProgress, setSavedProgress] = useState<SavedProgress | null>(null)
   const [isTesterOpen, setIsTesterOpen] = useState(false)
-  const [hasSeenFirstQuestionHand, setHasSeenFirstQuestionHand] =
-    useState(false)
+  const [hasCompletedTutorial, setHasCompletedTutorial] = useState(false)
 
   const puzzleDate = activeSchedule.date
   const systemDate = getTodayDateString()
@@ -1175,6 +1384,8 @@ export default function Page() {
   const [hintFlashIndex, setHintFlashIndex] = useState<number | null>(null)
   const [wrongIndex, setWrongIndex] = useState<number | null>(null)
   const [completedFlash, setCompletedFlash] = useState(false)
+  const [showSuccessCelebration, setShowSuccessCelebration] = useState(false)
+  const [successCelebrationNonce, setSuccessCelebrationNonce] = useState(0)
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null)
   const [noticeNonce, setNoticeNonce] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
@@ -1203,15 +1414,23 @@ export default function Page() {
     safePuzzles[questionIndex] ?? safePuzzles[safePuzzles.length - 1]
   const currentWord = letters.join("")
   const answerIndex = getDiffIndex(currentWord, currentPuzzle.answer)
-  const tutorialHandIndex =
+  const tutorialQuestionLimit = Math.min(2, safePuzzles.length)
+  const tutorialLocked =
     screen === "game" &&
-    questionIndex === 0 &&
-    selectedIndex === null &&
     !completedFlash &&
     !isPaused &&
-    !hasSeenFirstQuestionHand &&
-    answerIndex >= 0
-      ? answerIndex
+    !hasCompletedTutorial &&
+    questionIndex < tutorialQuestionLimit
+  const tutorialStep: TutorialStep | null = tutorialLocked
+    ? selectedIndex === null
+      ? "tile"
+      : "keyboard"
+    : null
+  const tutorialTargetTileIndex =
+    tutorialLocked && answerIndex >= 0 ? answerIndex : null
+  const tutorialTargetLetter =
+    tutorialStep === "keyboard" && tutorialTargetTileIndex !== null
+      ? (currentPuzzle.answer[tutorialTargetTileIndex]?.toUpperCase() ?? null)
       : null
 
   function clearIdlePromptTimers() {
@@ -1324,9 +1543,9 @@ export default function Page() {
     window.localStorage.setItem(storageKey, JSON.stringify(result))
   }
 
-  function markFirstQuestionHandSeen() {
+  function completeTutorial() {
     window.localStorage.setItem(FIRST_QUESTION_HAND_STORAGE_KEY, "1")
-    setHasSeenFirstQuestionHand(true)
+    setHasCompletedTutorial(true)
   }
 
   function clearStoredProgress(date = puzzleDate) {
@@ -1484,6 +1703,7 @@ export default function Page() {
     setHintFlashIndex(null)
     setWrongIndex(null)
     setCompletedFlash(false)
+    setShowSuccessCelebration(false)
     setNoticeMessage(null)
     setQuestionMistakes(0)
     setHighlightHintButton(false)
@@ -1492,6 +1712,8 @@ export default function Page() {
 
   function handleLetter(letter: string) {
     if (screen !== "game" || completedFlash || isPaused) return
+    if (tutorialStep === "tile") return
+    if (tutorialStep === "keyboard" && letter !== tutorialTargetLetter) return
     registerQuestionActivity()
 
     if (selectedIndex === null) {
@@ -1520,13 +1742,23 @@ export default function Page() {
       setHintIndex(null)
       setHintFlashIndex(null)
       setCompletedFlash(true)
+      setShowSuccessCelebration(true)
+      setSuccessCelebrationNonce((value) => value + 1)
       setSelectedIndex(activeIndex)
       setStreak(nextStreak)
       setLongestStreak(nextLongestStreak)
       setBonusPoints(nextBonusPoints)
+      if (
+        !hasCompletedTutorial &&
+        tutorialQuestionLimit > 0 &&
+        questionIndex >= tutorialQuestionLimit - 1
+      ) {
+        completeTutorial()
+      }
 
       feedbackTimerRef.current = window.setTimeout(() => {
         setCompletedFlash(false)
+        setShowSuccessCelebration(false)
         advanceQuestion(
           nextWord.toUpperCase(),
           mistakes,
@@ -1534,7 +1766,7 @@ export default function Page() {
           resolvedElapsed,
           nextBonusPoints
         )
-      }, 480)
+      }, 620)
       return
     }
 
@@ -1548,6 +1780,7 @@ export default function Page() {
     setWrongIndex(activeIndex)
     setShakeIndex(activeIndex)
     setCompletedFlash(false)
+    setShowSuccessCelebration(false)
     setSelectedIndex(activeIndex)
 
     if (nextQuestionMistakes === 2) {
@@ -1565,11 +1798,12 @@ export default function Page() {
       })
       setShakeIndex(null)
       setWrongIndex(null)
-    }, 420)
+    }, 860)
   }
 
   function handleHint() {
     if (screen !== "game" || completedFlash || isPaused) return
+    if (tutorialLocked) return
     registerQuestionActivity()
     const nextHintIndex = answerIndex >= 0 ? answerIndex : 0
     setHintIndex(nextHintIndex)
@@ -1591,6 +1825,7 @@ export default function Page() {
 
   function handleReveal() {
     if (screen !== "game" || completedFlash || isPaused) return
+    if (tutorialLocked) return
     registerQuestionActivity()
 
     clearPendingTimers()
@@ -1606,8 +1841,10 @@ export default function Page() {
     setHintFlashIndex(null)
     setSelectedIndex(answerIndex >= 0 ? answerIndex : 0)
     setWrongIndex(null)
-    setLetters(currentPuzzle.answer.split(""))
+    const revealedLetters = currentPuzzle.answer.split("")
+    setLetters(revealedLetters)
     setCompletedFlash(true)
+    setShowSuccessCelebration(false)
     setHighlightHintButton(false)
     setHighlightRevealButton(false)
 
@@ -1649,6 +1886,7 @@ export default function Page() {
     setHintFlashIndex(null)
     setWrongIndex(null)
     setCompletedFlash(false)
+    setShowSuccessCelebration(false)
     setNoticeMessage(null)
     setHighlightHintButton(false)
     setHighlightRevealButton(false)
@@ -1698,6 +1936,7 @@ export default function Page() {
     setHintFlashIndex(null)
     setWrongIndex(null)
     setCompletedFlash(false)
+    setShowSuccessCelebration(false)
     setNoticeMessage(null)
     setHighlightHintButton(false)
     setHighlightRevealButton(false)
@@ -1730,6 +1969,7 @@ export default function Page() {
     setHintFlashIndex(null)
     setWrongIndex(null)
     setCompletedFlash(false)
+    setShowSuccessCelebration(false)
     setNoticeMessage(null)
     setHighlightHintButton(false)
     setHighlightRevealButton(false)
@@ -1760,10 +2000,9 @@ export default function Page() {
   }
 
   function handleSelectTile(index: number) {
+    if (tutorialStep === "keyboard") return
+    if (tutorialStep === "tile" && index !== tutorialTargetTileIndex) return
     registerQuestionActivity()
-    if (questionIndex === 0 && !hasSeenFirstQuestionHand) {
-      markFirstQuestionHandSeen()
-    }
     if (hintIndex === index) {
       setHintIndex(null)
     }
@@ -1777,7 +2016,7 @@ export default function Page() {
     clearStoredProgress()
     setCompletedResult(null)
     setSavedProgress(null)
-    setHasSeenFirstQuestionHand(false)
+    setHasCompletedTutorial(false)
     setScreen("home")
     setIsPaused(false)
     setQuestionIndex(0)
@@ -1796,6 +2035,7 @@ export default function Page() {
     setHintFlashIndex(null)
     setWrongIndex(null)
     setCompletedFlash(false)
+    setShowSuccessCelebration(false)
     setNoticeMessage(null)
     setHighlightHintButton(false)
     setHighlightRevealButton(false)
@@ -1818,7 +2058,7 @@ export default function Page() {
       try {
         setCompletedResult(loadStoredResult(nextSchedule.date))
         setSavedProgress(loadStoredProgress(nextSchedule))
-        setHasSeenFirstQuestionHand(
+        setHasCompletedTutorial(
           window.localStorage.getItem(FIRST_QUESTION_HAND_STORAGE_KEY) === "1"
         )
       } finally {
@@ -1895,6 +2135,7 @@ export default function Page() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (screen !== "game" || isPaused) return
+      if (tutorialLocked) return
       const key = event.key.toUpperCase()
       if (/^[A-Z]$/.test(key)) {
         event.preventDefault()
@@ -1965,9 +2206,14 @@ export default function Page() {
             correctIndex={correctIndex}
             shakeIndex={shakeIndex}
             completedFlash={completedFlash}
+            showSuccessCelebration={showSuccessCelebration}
+            successCelebrationNonce={successCelebrationNonce}
             noticeMessage={noticeMessage}
             noticeNonce={noticeNonce}
-            tutorialHandIndex={tutorialHandIndex}
+            tutorialStep={tutorialStep}
+            tutorialTargetTileIndex={tutorialTargetTileIndex}
+            tutorialTargetLetter={tutorialTargetLetter}
+            tutorialLocked={tutorialLocked}
             onSelectTile={handleSelectTile}
             onLetter={handleLetter}
             onHint={handleHint}
@@ -1994,7 +2240,10 @@ export default function Page() {
               setIsPaused(false)
               setScreen("home")
             }}
-            onPause={() => setIsPaused(true)}
+            onPause={() => {
+              if (tutorialLocked) return
+              setIsPaused(true)
+            }}
           />
         ) : null}
 

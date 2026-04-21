@@ -123,7 +123,7 @@ const PRELOADED_GAME_ASSET_URLS = [
 
 const GAME_COPY = {
   home: {
-    title: "Wordचेन",
+    title: "WordChain",
     tagline: "एक-एक अक्षर बदलें, नए शब्दों की चेन बनाए",
     start: "पजल शुरू करें",
     resume: "खेल जारी रखें",
